@@ -2,7 +2,7 @@ import { isBrowser, isNode } from 'browser-or-node';
 import {
   fetchEventSource,
   EventSourceMessage,
-} from '@microsoft/fetch-event-source';
+} from '@fortaine/fetch-event-source';
 
 import {
   Scry,
@@ -144,7 +144,10 @@ export class Urbit {
     code,
     verbose = false,
   }: AuthenticationInterface) {
-    const airlock = new Urbit(url.startsWith('http') ? url : `http://${url}`, code);
+    const airlock = new Urbit(
+      url.startsWith('http') ? url : `http://${url}`,
+      code
+    );
     airlock.verbose = verbose;
     airlock.ship = ship;
     await airlock.connect();
@@ -240,7 +243,8 @@ export class Urbit {
           const eventId = parseInt(event.id, 10);
           if (eventId <= this.lastHeardEventId) {
             console.log('dropping old or out-of-order event', {
-              eventId, lastHeard: this.lastHeardEventId
+              eventId,
+              lastHeard: this.lastHeardEventId,
             });
             return;
           }
@@ -545,7 +549,7 @@ export class Urbit {
     const response = await fetch(
       `${this.url}/~/scry/${app}${path}.json`,
       this.fetchOptions
-    )
+    );
 
     if (!response.ok) {
       return Promise.reject(response);
