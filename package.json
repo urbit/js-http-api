@@ -1,6 +1,6 @@
 {
-  "name": "@holium/urbit-http-api",
-  "version": "2.4.3",
+  "name": "@urbit/http-api",
+  "version": "2.3.0",
   "license": "MIT",
   "description": "Library to interact with an Urbit ship over HTTP",
   "repository": {
@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "test": "jest",
-    "build": "npm run clean && rollup -c",
+    "build": "npm run clean && rollup -c && npx tsc -p tsconfig.json",
     "prepare": "npm run build",
     "watch": "rollup -c -w",
     "clean": "rm -rf dist/* types/*"
