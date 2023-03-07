@@ -1,8 +1,5 @@
 import { isBrowser, isNode } from 'browser-or-node';
-import {
-  fetchEventSource,
-  EventSourceMessage,
-} from '@microsoft/fetch-event-source';
+import { fetchEventSource, EventSourceMessage } from './fetch-event-source';
 
 import {
   Scry,
@@ -144,7 +141,10 @@ export class Urbit {
     code,
     verbose = false,
   }: AuthenticationInterface) {
-    const airlock = new Urbit(url.startsWith('http') ? url : `http://${url}`, code);
+    const airlock = new Urbit(
+      url.startsWith('http') ? url : `http://${url}`,
+      code
+    );
     airlock.verbose = verbose;
     airlock.ship = ship;
     await airlock.connect();
@@ -218,6 +218,7 @@ export class Urbit {
       fetchEventSource(this.channelUrl, {
         ...this.fetchOptions,
         openWhenHidden: true,
+        responseTimeout: 25000,
         onopen: async (response) => {
           if (this.verbose) {
             console.log('Opened eventsource', response);
@@ -240,7 +241,8 @@ export class Urbit {
           const eventId = parseInt(event.id, 10);
           if (eventId <= this.lastHeardEventId) {
             console.log('dropping old or out-of-order event', {
-              eventId, lastHeard: this.lastHeardEventId
+              eventId,
+              lastHeard: this.lastHeardEventId,
             });
             return;
           }
@@ -300,10 +302,10 @@ export class Urbit {
           }
         },
         onerror: (error) => {
-          console.warn(error);
-          if (!(error instanceof FatalError) && this.errorCount++ < 4) {
+          this.errorCount++;
+          if (!(error instanceof FatalError)) {
             this.onRetry && this.onRetry();
-            return Math.pow(2, this.errorCount - 1) * 750;
+            return Math.min(5000, Math.pow(2, this.errorCount - 1) * 750);
           }
           this.onError && this.onError(error);
           throw error;
@@ -545,7 +547,7 @@ export class Urbit {
     const response = await fetch(
       `${this.url}/~/scry/${app}${path}.json`,
       this.fetchOptions
-    )
+    );
 
     if (!response.ok) {
       return Promise.reject(response);
