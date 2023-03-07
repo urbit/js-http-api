@@ -1,4 +1,5 @@
 import { isBrowser, isNode } from 'browser-or-node';
+import { UrbitHttpApiEvent, UrbitHttpApiEventType } from './events';
 import { fetchEventSource, EventSourceMessage } from './fetch-event-source';
 
 import {
@@ -13,12 +14,17 @@ import {
   Message,
   FatalError,
 } from './types';
-import { hexString } from './utils';
+import EventEmitter, { hexString } from './utils';
 
 /**
  * A class for interacting with an urbit ship, given its URL and code
  */
 export class Urbit {
+  /**
+   * Event emitter for debugging, see events.ts for full list of events
+   */
+  private emitter = new EventEmitter();
+
   /**
    * UID will be used for the channel: The current unix time plus a random hex string
    */
@@ -157,6 +163,16 @@ export class Urbit {
     return airlock;
   }
 
+  private emit(event: UrbitHttpApiEventType, data: UrbitHttpApiEvent) {
+    if (this.verbose) {
+      this.emitter.emit(event, data);
+    }
+  }
+
+  on(event: UrbitHttpApiEventType, callback: Function): void {
+    this.emitter.on(event, callback);
+  }
+
   /**
    * Connects to the Urbit ship. Nothing can be done until this is called.
    * That's why we roll it into this.authenticate
@@ -196,6 +212,7 @@ export class Urbit {
       return Promise.resolve();
     }
     if (this.lastEventId === 0) {
+      this.emit('status-update', { status: 'opening' });
       // Can't receive events until the channel is open,
       // so poke and open then
       await this.poke({
@@ -219,13 +236,16 @@ export class Urbit {
         ...this.fetchOptions,
         openWhenHidden: true,
         responseTimeout: 25000,
-        onopen: async (response) => {
+        onopen: async (response, isReconnect) => {
           if (this.verbose) {
             console.log('Opened eventsource', response);
           }
           if (response.ok) {
             this.errorCount = 0;
             this.onOpen && this.onOpen();
+            this.emit('status-update', {
+              status: isReconnect ? 'reconnected' : 'active',
+            });
             resolve();
             return; // everything's good
           } else {
@@ -239,6 +259,11 @@ export class Urbit {
           }
           if (!event.id) return;
           const eventId = parseInt(event.id, 10);
+          this.emit('fact', {
+            id: eventId,
+            data: event.data,
+            time: Date.now(),
+          });
           if (eventId <= this.lastHeardEventId) {
             console.log('dropping old or out-of-order event', {
               eventId,
@@ -247,6 +272,7 @@ export class Urbit {
             return;
           }
           this.lastHeardEventId = eventId;
+          this.emit('id-update', { lastHeard: this.lastHeardEventId });
           if (eventId - this.lastAcknowledgedEventId > 20) {
             this.ack(eventId);
           }
@@ -303,10 +329,13 @@ export class Urbit {
         },
         onerror: (error) => {
           this.errorCount++;
+          this.emit('error', { time: Date.now(), msg: JSON.stringify(error) });
           if (!(error instanceof FatalError)) {
+            this.emit('status-update', { status: 'reconnecting' });
             this.onRetry && this.onRetry();
             return Math.min(5000, Math.pow(2, this.errorCount - 1) * 750);
           }
+          this.emit('status-update', { status: 'errored' });
           this.onError && this.onError(error);
           throw error;
         },
@@ -330,6 +359,7 @@ export class Urbit {
     this.abort.abort();
     this.abort = new AbortController();
     this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
+    this.emit('reset', { uid: this.uid });
     this.lastEventId = 0;
     this.lastHeardEventId = -1;
     this.lastAcknowledgedEventId = -1;
@@ -342,7 +372,9 @@ export class Urbit {
    * Autoincrements the next event ID for the appropriate channel.
    */
   private getEventId(): number {
-    return ++this.lastEventId;
+    this.lastEventId += 1;
+    this.emit('id-update', { current: this.lastEventId });
+    return this.lastEventId;
   }
 
   /**
@@ -352,6 +384,7 @@ export class Urbit {
    */
   private async ack(eventId: number): Promise<number | void> {
     this.lastAcknowledgedEventId = eventId;
+    this.emit('id-update', { lastAcknowledged: eventId });
     const message: Message = {
       action: 'ack',
       'event-id': eventId,
@@ -428,6 +461,11 @@ export class Urbit {
       ship: this.ship,
       ...params,
     };
+
+    if (this.lastEventId === 0) {
+      this.emit('status-update', { status: 'opening' });
+    }
+
     const message: Message = {
       id: this.getEventId(),
       action: 'poke',
@@ -470,6 +508,10 @@ export class Urbit {
       ship: this.ship,
       ...params,
     };
+
+    if (this.lastEventId === 0) {
+      this.emit('status-update', { status: 'opening' });
+    }
 
     const message: Message = {
       id: this.getEventId(),
