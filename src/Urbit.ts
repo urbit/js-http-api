@@ -1,5 +1,8 @@
 import { isBrowser, isNode } from 'browser-or-node';
-import { fetchEventSource, EventSourceMessage } from './fetch-event-source';
+import {
+  fetchEventSource,
+  EventSourceMessage,
+} from '@fortaine/fetch-event-source';
 
 import {
   Scry,
@@ -510,19 +513,24 @@ export class Urbit {
   /**
    * Deletes the connection to a channel.
    */
-  delete() {
+  async delete() {
+    const body = JSON.stringify([
+      {
+        id: this.getEventId(),
+        action: 'delete',
+      },
+    ]);
     if (isBrowser) {
-      navigator.sendBeacon(
-        this.channelUrl,
-        JSON.stringify([
-          {
-            action: 'delete',
-          },
-        ])
-      );
+      navigator.sendBeacon(this.channelUrl, body);
     } else {
-      // TODO
-      // this.sendMessage('delete');
+      const response = await fetch(this.channelUrl, {
+        ...this.fetchOptions,
+        method: 'POST',
+        body: body,
+      });
+      if (!response.ok) {
+        throw new Error('Failed to DELETE channel in node context');
+      }
     }
   }
 

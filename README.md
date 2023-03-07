@@ -1,6 +1,6 @@
-# Urbit Connector
+# Urbit JS HTTP API
 
-This project allows you to connect to an [Urbit](https://urbit.org) ship via a JavaScript application.
+This project allows you to connect to an [Urbit](https://urbit.org) ship via a JavaScript application. In-depth usage can be found in [the guide](https://developers.urbit.org/guides/additional/http-api-guide).
 
 ## Example
 
