@@ -89,15 +89,17 @@ export function fetchEventSource(
       }
     }
 
-    if (!openWhenHidden) {
+    if (typeof document !== 'undefined' && !openWhenHidden) {
       document.addEventListener('visibilitychange', onVisibilityChange);
     }
 
     let retryInterval = DefaultRetryInterval;
-    let retryTimer = 0;
+    let retryTimer: ReturnType<typeof setTimeout>;
     function dispose() {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.clearTimeout(retryTimer);
+      if (typeof document !== 'undefined' && !openWhenHidden) {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
+      clearTimeout(retryTimer);
       curRequestController.abort();
     }
 
@@ -107,14 +109,14 @@ export function fetchEventSource(
       resolve(); // don't waste time constructing/logging errors
     });
 
-    const fetch = inputFetch ?? window.fetch;
+    const fetchFn = inputFetch ?? fetch;
     const onopen = inputOnOpen ?? defaultOnOpen;
     let isReconnect = false;
     async function create() {
       curRequestController = new AbortController();
       try {
         const response = (await Promise.race([
-          fetch(input, {
+          fetchFn(input, {
             ...rest,
             headers,
             signal: curRequestController.signal,
@@ -138,6 +140,7 @@ export function fetchEventSource(
           response.body!,
           getLines(
             getMessages(
+              onmessage,
               (id) => {
                 if (id) {
                   // store the id and send it back on the next retry:
@@ -149,8 +152,7 @@ export function fetchEventSource(
               },
               (retry) => {
                 retryInterval = retry;
-              },
-              onmessage
+              }
             )
           ),
           responseTimeout
@@ -165,9 +167,9 @@ export function fetchEventSource(
           try {
             // check if we need to retry:
             const interval: any = onerror?.(err) ?? retryInterval;
-            window.clearTimeout(retryTimer);
+            clearTimeout(retryTimer);
             curRequestController.abort();
-            retryTimer = window.setTimeout(create, interval);
+            retryTimer = setTimeout(create, interval);
             isReconnect = true;
           } catch (innerErr) {
             // we should not retry anymore:

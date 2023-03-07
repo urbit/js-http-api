@@ -25,12 +25,15 @@ export async function getBytes(
   responseTimeout?: number
 ) {
   const reader = stream.getReader();
-  let result: any;
-  result = true;
+  let result: ReadableStreamReadResult<Uint8Array> = {
+    done: false,
+    value: new Uint8Array(),
+  };
+
   while (result && !result.done) {
     result = await Promise.race([
       reader.read(),
-      new Promise((_, reject) => {
+      new Promise<ReadableStreamReadResult<Uint8Array>>((_, reject) => {
         setTimeout(
           () => reject(new Error('getBytes timed out')),
           responseTimeout
@@ -38,7 +41,7 @@ export async function getBytes(
       }),
     ]);
 
-    onChunk(result.value as Uint8Array);
+    onChunk(result.value);
   }
 }
 
@@ -135,9 +138,9 @@ export function getLines(
  * @returns A function that should be called for each incoming line buffer.
  */
 export function getMessages(
-  onId: (id: string) => void,
-  onRetry: (retry: number) => void,
-  onMessage?: (msg: EventSourceMessage) => void
+  onMessage?: (msg: EventSourceMessage) => void,
+  onId?: (id: string) => void,
+  onRetry?: (retry: number) => void
 ) {
   let message = newMessage();
   const decoder = new TextDecoder();
@@ -167,13 +170,13 @@ export function getMessages(
           message.event = value;
           break;
         case 'id':
-          onId((message.id = value));
+          onId?.((message.id = value));
           break;
         case 'retry':
           const retry = parseInt(value, 10);
           if (!isNaN(retry)) {
             // per spec, ignore non-integers
-            onRetry((message.retry = retry));
+            onRetry?.((message.retry = retry));
           }
           break;
       }

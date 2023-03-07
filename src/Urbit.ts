@@ -1,8 +1,5 @@
 import { isBrowser, isNode } from 'browser-or-node';
-import {
-  fetchEventSource,
-  EventSourceMessage,
-} from '@fortaine/fetch-event-source';
+import { fetchEventSource, EventSourceMessage } from './fetch-event-source';
 
 import {
   Scry,
