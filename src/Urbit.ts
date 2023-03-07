@@ -2,7 +2,7 @@ import { isBrowser, isNode } from 'browser-or-node';
 import {
   fetchEventSource,
   EventSourceMessage,
-} from '@microsoft/fetch-event-source';
+} from '@fortaine/fetch-event-source';
 
 import {
   Scry,
@@ -144,7 +144,10 @@ export class Urbit {
     code,
     verbose = false,
   }: AuthenticationInterface) {
-    const airlock = new Urbit(url.startsWith('http') ? url : `http://${url}`, code);
+    const airlock = new Urbit(
+      url.startsWith('http') ? url : `http://${url}`,
+      code
+    );
     airlock.verbose = verbose;
     airlock.ship = ship;
     await airlock.connect();
@@ -240,7 +243,8 @@ export class Urbit {
           const eventId = parseInt(event.id, 10);
           if (eventId <= this.lastHeardEventId) {
             console.log('dropping old or out-of-order event', {
-              eventId, lastHeard: this.lastHeardEventId
+              eventId,
+              lastHeard: this.lastHeardEventId,
             });
             return;
           }
@@ -508,19 +512,24 @@ export class Urbit {
   /**
    * Deletes the connection to a channel.
    */
-  delete() {
+  async delete() {
+    const body = JSON.stringify([
+      {
+        id: this.getEventId(),
+        action: 'delete',
+      },
+    ]);
     if (isBrowser) {
-      navigator.sendBeacon(
-        this.channelUrl,
-        JSON.stringify([
-          {
-            action: 'delete',
-          },
-        ])
-      );
+      navigator.sendBeacon(this.channelUrl, body);
     } else {
-      // TODO
-      // this.sendMessage('delete');
+      const response = await fetch(this.channelUrl, {
+        ...this.fetchOptions,
+        method: 'POST',
+        body: body,
+      });
+      if (!response.ok) {
+        throw new Error('Failed to DELETE channel in node context');
+      }
     }
   }
 
@@ -545,7 +554,7 @@ export class Urbit {
     const response = await fetch(
       `${this.url}/~/scry/${app}${path}.json`,
       this.fetchOptions
-    )
+    );
 
     if (!response.ok) {
       return Promise.reject(response);
