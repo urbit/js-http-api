@@ -1,8 +1,5 @@
 import { isBrowser, isNode } from 'browser-or-node';
-import {
-  fetchEventSource,
-  EventSourceMessage,
-} from '@fortaine/fetch-event-source';
+import { fetchEventSource, EventSourceMessage } from './fetch-event-source';
 
 import {
   Scry,
@@ -221,6 +218,7 @@ export class Urbit {
       fetchEventSource(this.channelUrl, {
         ...this.fetchOptions,
         openWhenHidden: true,
+        responseTimeout: 25000,
         onopen: async (response) => {
           if (this.verbose) {
             console.log('Opened eventsource', response);
@@ -304,10 +302,10 @@ export class Urbit {
           }
         },
         onerror: (error) => {
-          console.warn(error);
-          if (!(error instanceof FatalError) && this.errorCount++ < 4) {
+          this.errorCount++;
+          if (!(error instanceof FatalError)) {
             this.onRetry && this.onRetry();
-            return Math.pow(2, this.errorCount - 1) * 750;
+            return Math.min(5000, Math.pow(2, this.errorCount - 1) * 750);
           }
           this.onError && this.onError(error);
           throw error;
