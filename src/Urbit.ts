@@ -571,9 +571,10 @@ export class Urbit {
    * @returns The scry result
    */
   async scry<T = any>(params: Scry): Promise<T> {
-    const { app, path } = params;
+    const { app, path, mark } = params;
+    console.log('scry', params)
     const response = await fetch(
-      `${this.url}/~/scry/${app}${path}.json`,
+      `${this.url}/~/scry/${app}${path}.${ mark || 'json' }`,
       this.fetchOptions
     );
 

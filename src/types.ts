@@ -85,6 +85,7 @@ export interface Scry {
   app: GallAgent;
   /** {@inheritDoc Path} */
   path: Path;
+  mark?: Mark;
 }
 
 /**
