@@ -327,7 +327,7 @@ export class Urbit {
     if (this.verbose) {
       console.log('resetting');
     }
-    this.delete();
+    // this.delete();
     this.abort.abort();
     this.abort = new AbortController();
     this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
@@ -526,8 +526,8 @@ export class Urbit {
         method: 'POST',
         body: body,
       });
-      if (!response.ok) {
-        throw new Error('Failed to DELETE channel in node context');
+      if (!response.ok && this.verbose) {
+        console.log('Failed to DELETE channel in node context');
       }
     }
   }
