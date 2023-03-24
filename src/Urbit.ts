@@ -310,7 +310,6 @@ export class Urbit {
             return Math.pow(2, this.errorCount - 1) * 750;
           }
           this.onError && this.onError(error);
-          throw error;
         },
         onclose: () => {
           console.log('e');
