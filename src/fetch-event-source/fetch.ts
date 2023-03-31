@@ -54,8 +54,6 @@ export interface FetchEventSourceInit extends RequestInit {
 
   /** How many millisedonds to wait for bytes before timing out */
   responseTimeout?: number;
-
-  onreconnect?: () => void;
 }
 
 export function fetchEventSource(
@@ -67,7 +65,6 @@ export function fetchEventSource(
     onmessage,
     onclose,
     onerror,
-    onreconnect,
     openWhenHidden,
     fetch: inputFetch,
     responseTimeout,
@@ -165,12 +162,12 @@ export function fetchEventSource(
         if (!curRequestController.signal.aborted) {
           // if we haven't aborted the request ourselves:
           try {
+            isReconnect = true;
             // check if we need to retry:
             const interval: any = onerror?.(err) ?? retryInterval;
             clearTimeout(retryTimer);
             curRequestController.abort();
             retryTimer = setTimeout(create, interval);
-            isReconnect = true;
           } catch (innerErr) {
             // we should not retry anymore:
             dispose();

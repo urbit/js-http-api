@@ -98,6 +98,8 @@ export class Urbit {
 
   onOpen?: () => void = null;
 
+  onReconnect?: () => void = null;
+
   /** This is basic interpolation to get the channel URL of an instantiated Urbit connection. */
   private get channelUrl(): string {
     return `${this.url}/~/channel/${this.uid}`;
@@ -239,6 +241,9 @@ export class Urbit {
         onopen: async (response, isReconnect) => {
           if (this.verbose) {
             console.log('Opened eventsource', response);
+          }
+          if (isReconnect) {
+            this.onReconnect && this.onReconnect();
           }
           if (response.ok) {
             this.errorCount = 0;
@@ -403,6 +408,7 @@ export class Urbit {
       throw new Error('Failed to PUT channel');
     }
     if (!this.sseClientInitialized) {
+      console.log('initializing event source');
       await this.eventSource();
     }
   }
