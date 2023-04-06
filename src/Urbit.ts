@@ -165,14 +165,30 @@ export class Urbit {
     return airlock;
   }
 
-  private emit(event: UrbitHttpApiEventType, data: UrbitHttpApiEvent) {
+  private emit<T extends UrbitHttpApiEventType>(
+    event: T,
+    data: UrbitHttpApiEvent[T]
+  ) {
     if (this.verbose) {
       this.emitter.emit(event, data);
     }
   }
 
-  on(event: UrbitHttpApiEventType, callback: Function): void {
+  on<T extends UrbitHttpApiEventType>(
+    event: T,
+    callback: (data: UrbitHttpApiEvent[T]) => void
+  ): void {
     this.emitter.on(event, callback);
+
+    this.verbose && console.log(event, 'listening active');
+    if (event === 'init') {
+      this.emitter.emit(event, {
+        uid: this.uid,
+        subscriptions: [...this.outstandingSubscriptions.entries()].map(
+          ([k, v]) => ({ id: k, app: v.app, path: v.path })
+        ),
+      });
+    }
   }
 
   /**
@@ -326,6 +342,10 @@ export class Urbit {
               const funcs = this.outstandingSubscriptions.get(data.id);
               funcs.quit(data);
               this.outstandingSubscriptions.delete(data.id);
+              this.emit('subscription', {
+                id: data.id,
+                status: 'close',
+              });
             } else {
               console.log([...this.outstandingSubscriptions.keys()]);
               console.log('Unrecognized response', data);
@@ -535,6 +555,13 @@ export class Urbit {
       quit,
     });
 
+    this.emit('subscription', {
+      id: message.id,
+      app,
+      path,
+      status: 'open',
+    });
+
     await this.sendJSONtoChannel(message);
 
     return message.id;
@@ -551,6 +578,10 @@ export class Urbit {
       action: 'unsubscribe',
       subscription,
     }).then(() => {
+      this.emit('subscription', {
+        id: subscription,
+        status: 'close',
+      });
       this.outstandingSubscriptions.delete(subscription);
     });
   }

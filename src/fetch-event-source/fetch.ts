@@ -126,6 +126,10 @@ export function fetchEventSource(
           }),
         ])) as Response;
 
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(`Invalid server response: ${response.status}`);
+        }
+
         await onopen(response, isReconnect);
 
         // reset reconnect status
