@@ -1,4 +1,5 @@
 import { isBrowser, isNode } from 'browser-or-node';
+import { UrbitHttpApiEvent, UrbitHttpApiEventType } from './events';
 import { fetchEventSource, EventSourceMessage } from './fetch-event-source';
 
 import {
@@ -13,12 +14,17 @@ import {
   Message,
   FatalError,
 } from './types';
-import { hexString } from './utils';
+import EventEmitter, { hexString } from './utils';
 
 /**
  * A class for interacting with an urbit ship, given its URL and code
  */
 export class Urbit {
+  /**
+   * Event emitter for debugging, see events.ts for full list of events
+   */
+  private emitter = new EventEmitter();
+
   /**
    * UID will be used for the channel: The current unix time plus a random hex string
    */
@@ -92,6 +98,8 @@ export class Urbit {
 
   onOpen?: () => void = null;
 
+  onReconnect?: () => void = null;
+
   /** This is basic interpolation to get the channel URL of an instantiated Urbit connection. */
   private get channelUrl(): string {
     return `${this.url}/~/channel/${this.uid}`;
@@ -157,6 +165,32 @@ export class Urbit {
     return airlock;
   }
 
+  private emit<T extends UrbitHttpApiEventType>(
+    event: T,
+    data: UrbitHttpApiEvent[T]
+  ) {
+    if (this.verbose) {
+      this.emitter.emit(event, data);
+    }
+  }
+
+  on<T extends UrbitHttpApiEventType>(
+    event: T,
+    callback: (data: UrbitHttpApiEvent[T]) => void
+  ): void {
+    this.emitter.on(event, callback);
+
+    this.verbose && console.log(event, 'listening active');
+    if (event === 'init') {
+      this.emitter.emit(event, {
+        uid: this.uid,
+        subscriptions: [...this.outstandingSubscriptions.entries()].map(
+          ([k, v]) => ({ id: k, app: v.app, path: v.path })
+        ),
+      });
+    }
+  }
+
   /**
    * Connects to the Urbit ship. Nothing can be done until this is called.
    * That's why we roll it into this.authenticate
@@ -196,6 +230,7 @@ export class Urbit {
       return Promise.resolve();
     }
     if (this.lastEventId === 0) {
+      this.emit('status-update', { status: 'opening' });
       // Can't receive events until the channel is open,
       // so poke and open then
       await this.poke({
@@ -219,13 +254,19 @@ export class Urbit {
         ...this.fetchOptions,
         openWhenHidden: true,
         responseTimeout: 25000,
-        onopen: async (response) => {
+        onopen: async (response, isReconnect) => {
           if (this.verbose) {
             console.log('Opened eventsource', response);
+          }
+          if (isReconnect) {
+            this.onReconnect && this.onReconnect();
           }
           if (response.ok) {
             this.errorCount = 0;
             this.onOpen && this.onOpen();
+            this.emit('status-update', {
+              status: isReconnect ? 'reconnected' : 'active',
+            });
             resolve();
             return; // everything's good
           } else {
@@ -239,6 +280,11 @@ export class Urbit {
           }
           if (!event.id) return;
           const eventId = parseInt(event.id, 10);
+          this.emit('fact', {
+            id: eventId,
+            data: event.data,
+            time: Date.now(),
+          });
           if (eventId <= this.lastHeardEventId) {
             console.log('dropping old or out-of-order event', {
               eventId,
@@ -247,6 +293,7 @@ export class Urbit {
             return;
           }
           this.lastHeardEventId = eventId;
+          this.emit('id-update', { lastHeard: this.lastHeardEventId });
           if (eventId - this.lastAcknowledgedEventId > 20) {
             this.ack(eventId);
           }
@@ -284,7 +331,7 @@ export class Urbit {
             ) {
               const funcs = this.outstandingSubscriptions.get(data.id);
               try {
-                funcs.event(data.json, data.mark ?? 'json');
+                funcs.event(data.json, data.mark ?? 'json', data.id);
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
@@ -295,6 +342,10 @@ export class Urbit {
               const funcs = this.outstandingSubscriptions.get(data.id);
               funcs.quit(data);
               this.outstandingSubscriptions.delete(data.id);
+              this.emit('subscription', {
+                id: data.id,
+                status: 'close',
+              });
             } else {
               console.log([...this.outstandingSubscriptions.keys()]);
               console.log('Unrecognized response', data);
@@ -303,10 +354,13 @@ export class Urbit {
         },
         onerror: (error) => {
           this.errorCount++;
+          this.emit('error', { time: Date.now(), msg: JSON.stringify(error) });
           if (!(error instanceof FatalError)) {
+            this.emit('status-update', { status: 'reconnecting' });
             this.onRetry && this.onRetry();
             return Math.min(5000, Math.pow(2, this.errorCount - 1) * 750);
           }
+          this.emit('status-update', { status: 'errored' });
           this.onError && this.onError(error);
           throw error;
         },
@@ -330,6 +384,7 @@ export class Urbit {
     this.abort.abort();
     this.abort = new AbortController();
     this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
+    this.emit('reset', { uid: this.uid });
     this.lastEventId = 0;
     this.lastHeardEventId = -1;
     this.lastAcknowledgedEventId = -1;
@@ -342,7 +397,9 @@ export class Urbit {
    * Autoincrements the next event ID for the appropriate channel.
    */
   private getEventId(): number {
-    return ++this.lastEventId;
+    this.lastEventId += 1;
+    this.emit('id-update', { current: this.lastEventId });
+    return this.lastEventId;
   }
 
   /**
@@ -352,6 +409,7 @@ export class Urbit {
    */
   private async ack(eventId: number): Promise<number | void> {
     this.lastAcknowledgedEventId = eventId;
+    this.emit('id-update', { lastAcknowledged: eventId });
     const message: Message = {
       action: 'ack',
       'event-id': eventId,
@@ -370,6 +428,7 @@ export class Urbit {
       throw new Error('Failed to PUT channel');
     }
     if (!this.sseClientInitialized) {
+      console.log('initializing event source');
       await this.eventSource();
     }
   }
@@ -392,7 +451,7 @@ export class Urbit {
           reject('quit');
         }
       };
-      const event = (e: T) => {
+      const event = (e: T, mark: string, id: number) => {
         if (!done) {
           resolve(e);
           this.unsubscribe(id);
@@ -428,6 +487,11 @@ export class Urbit {
       ship: this.ship,
       ...params,
     };
+
+    if (this.lastEventId === 0) {
+      this.emit('status-update', { status: 'opening' });
+    }
+
     const message: Message = {
       id: this.getEventId(),
       action: 'poke',
@@ -471,6 +535,10 @@ export class Urbit {
       ...params,
     };
 
+    if (this.lastEventId === 0) {
+      this.emit('status-update', { status: 'opening' });
+    }
+
     const message: Message = {
       id: this.getEventId(),
       action: 'subscribe',
@@ -485,6 +553,13 @@ export class Urbit {
       err,
       event,
       quit,
+    });
+
+    this.emit('subscription', {
+      id: message.id,
+      app,
+      path,
+      status: 'open',
     });
 
     await this.sendJSONtoChannel(message);
@@ -503,6 +578,10 @@ export class Urbit {
       action: 'unsubscribe',
       subscription,
     }).then(() => {
+      this.emit('subscription', {
+        id: subscription,
+        status: 'close',
+      });
       this.outstandingSubscriptions.delete(subscription);
     });
   }

@@ -148,7 +148,7 @@ export interface SubscriptionInterface {
   /**
    * Handle %fact
    */
-  event?(data: any, mark: string): void;
+  event?(data: any, mark: string, id: number): void;
   /**
    * Handle %kick
    */
