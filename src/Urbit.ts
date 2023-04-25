@@ -331,7 +331,7 @@ export class Urbit {
             ) {
               const funcs = this.outstandingSubscriptions.get(data.id);
               try {
-                funcs.event(data.json, data.mark ?? 'json');
+                funcs.event(data.json, data.mark ?? 'json', data.id);
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
@@ -451,7 +451,7 @@ export class Urbit {
           reject('quit');
         }
       };
-      const event = (e: T) => {
+      const event = (e: T, mark: string, id: number) => {
         if (!done) {
           resolve(e);
           this.unsubscribe(id);
