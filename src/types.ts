@@ -196,3 +196,5 @@ export interface Message extends Record<string, any> {
 export class ResumableError extends Error {}
 
 export class FatalError extends Error {}
+
+export class ReapError extends Error {}

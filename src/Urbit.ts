@@ -13,6 +13,7 @@ import {
   PokeHandlers,
   Message,
   FatalError,
+  ReapError,
 } from './types';
 import EventEmitter, { hexString } from './utils';
 
@@ -355,6 +356,10 @@ export class Urbit {
         onerror: (error) => {
           this.errorCount++;
           this.emit('error', { time: Date.now(), msg: JSON.stringify(error) });
+          if (error instanceof ReapError) {
+            this.seamlessReset();
+            return;
+          }
           if (!(error instanceof FatalError)) {
             this.emit('status-update', { status: 'reconnecting' });
             this.onRetry && this.onRetry();
@@ -391,6 +396,33 @@ export class Urbit {
     this.outstandingSubscriptions = new Map();
     this.outstandingPokes = new Map();
     this.sseClientInitialized = false;
+  }
+
+  private seamlessReset() {
+    // called if a channel was reaped by %eyre before we reconnected
+    // so we have to make a new channel.
+    this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
+    this.emit('seamless-reset', { uid: this.uid });
+    this.sseClientInitialized = false;
+    this.lastEventId = 0;
+    this.lastHeardEventId = -1;
+    this.lastAcknowledgedEventId = -1;
+    this.outstandingSubscriptions.forEach((sub, id) => {
+      sub.quit({
+        id,
+        response: 'quit',
+      });
+      this.emit('subscription', {
+        id,
+        status: 'close',
+      });
+    });
+    this.outstandingSubscriptions = new Map();
+
+    this.outstandingPokes.forEach((poke, id) => {
+      poke.onError('Channel was reaped');
+    });
+    this.outstandingPokes = new Map();
   }
 
   /**

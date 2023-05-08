@@ -1,3 +1,4 @@
+import { FatalError, ReapError } from 'src/types';
 import { EventSourceMessage, getBytes, getLines, getMessages } from './parse';
 
 export const EventStreamContentType = 'text/event-stream';
@@ -125,6 +126,10 @@ export function fetchEventSource(
             );
           }),
         ])) as Response;
+
+        if (response.status === 404) {
+          throw new ReapError('Channel reaped');
+        }
 
         if (response.status < 200 || response.status >= 300) {
           throw new Error(`Invalid server response: ${response.status}`);
