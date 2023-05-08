@@ -287,10 +287,12 @@ export class Urbit {
             time: Date.now(),
           });
           if (eventId <= this.lastHeardEventId) {
-            console.log('dropping old or out-of-order event', {
-              eventId,
-              lastHeard: this.lastHeardEventId,
-            });
+            if (this.verbose) {
+              console.log('dropping old or out-of-order event', {
+                eventId,
+                lastHeard: this.lastHeardEventId,
+              });
+            }
             return;
           }
           this.lastHeardEventId = eventId;
@@ -347,7 +349,7 @@ export class Urbit {
                 id: data.id,
                 status: 'close',
               });
-            } else {
+            } else if (this.verbose) {
               console.log([...this.outstandingSubscriptions.keys()]);
               console.log('Unrecognized response', data);
             }
@@ -460,7 +462,9 @@ export class Urbit {
       throw new Error('Failed to PUT channel');
     }
     if (!this.sseClientInitialized) {
-      console.log('initializing event source');
+      if (this.verbose) {
+        console.log('initializing event source');
+      }
       await this.eventSource();
     }
   }
