@@ -83,6 +83,11 @@ export class Urbit {
   ship?: string | null;
 
   /**
+   * Our identity, with which we are authenticated into the ship
+   */
+  our?: string | null;
+
+  /**
    * If verbose, logs output eagerly.
    */
   verbose?: boolean;
@@ -209,8 +214,27 @@ export class Urbit {
   }
 
   /**
+   * Gets the name of the ship accessible at this.url and stores it to this.ship
+   *
+   */
+  async getOurName(): Promise<void> {
+    if (this.our) {
+      return Promise.resolve();
+    }
+
+    const nameResp = await fetch(`${this.url}/~/name`, {
+      method: 'get',
+      credentials: 'include',
+    });
+    const name = await nameResp.text();
+    this.our = name.substring(1);
+  }
+
+  /**
    * Connects to the Urbit ship. Nothing can be done until this is called.
    * That's why we roll it into this.authenticate
+   * TODO  as of urbit/urbit#6561, this is no longer true, and we are able
+   *       to interact with the ship using a guest identity.
    */
   async connect(): Promise<void> {
     if (this.verbose) {
@@ -240,6 +264,7 @@ export class Urbit {
         this.cookie = cookie;
       }
       this.getShipName();
+      this.getOurName();
     });
   }
 
