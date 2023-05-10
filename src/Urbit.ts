@@ -13,6 +13,7 @@ import {
   PokeHandlers,
   Message,
   FatalError,
+  ReapError,
 } from './types';
 import EventEmitter, { hexString } from './utils';
 
@@ -332,10 +333,12 @@ export class Urbit {
             time: Date.now(),
           });
           if (eventId <= this.lastHeardEventId) {
-            console.log('dropping old or out-of-order event', {
-              eventId,
-              lastHeard: this.lastHeardEventId,
-            });
+            if (this.verbose) {
+              console.log('dropping old or out-of-order event', {
+                eventId,
+                lastHeard: this.lastHeardEventId,
+              });
+            }
             return;
           }
           this.lastHeardEventId = eventId;
@@ -392,7 +395,7 @@ export class Urbit {
                 id: data.id,
                 status: 'close',
               });
-            } else {
+            } else if (this.verbose) {
               console.log([...this.outstandingSubscriptions.keys()]);
               console.log('Unrecognized response', data);
             }
@@ -401,6 +404,10 @@ export class Urbit {
         onerror: (error) => {
           this.errorCount++;
           this.emit('error', { time: Date.now(), msg: JSON.stringify(error) });
+          if (error instanceof ReapError) {
+            this.seamlessReset();
+            return;
+          }
           if (!(error instanceof FatalError)) {
             this.emit('status-update', { status: 'reconnecting' });
             this.onRetry && this.onRetry();
@@ -439,6 +446,33 @@ export class Urbit {
     this.sseClientInitialized = false;
   }
 
+  private seamlessReset() {
+    // called if a channel was reaped by %eyre before we reconnected
+    // so we have to make a new channel.
+    this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
+    this.emit('seamless-reset', { uid: this.uid });
+    this.sseClientInitialized = false;
+    this.lastEventId = 0;
+    this.lastHeardEventId = -1;
+    this.lastAcknowledgedEventId = -1;
+    this.outstandingSubscriptions.forEach((sub, id) => {
+      sub.quit({
+        id,
+        response: 'quit',
+      });
+      this.emit('subscription', {
+        id,
+        status: 'close',
+      });
+    });
+    this.outstandingSubscriptions = new Map();
+
+    this.outstandingPokes.forEach((poke, id) => {
+      poke.onError('Channel was reaped');
+    });
+    this.outstandingPokes = new Map();
+  }
+
   /**
    * Autoincrements the next event ID for the appropriate channel.
    */
@@ -474,7 +508,9 @@ export class Urbit {
       throw new Error('Failed to PUT channel');
     }
     if (!this.sseClientInitialized) {
-      console.log('initializing event source');
+      if (this.verbose) {
+        console.log('initializing event source');
+      }
       await this.eventSource();
     }
   }

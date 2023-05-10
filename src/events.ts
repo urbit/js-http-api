@@ -49,6 +49,7 @@ export type UrbitHttpApiEvent = {
   fact: FactEvent;
   error: ErrorEvent;
   reset: ResetEvent;
+  'seamless-reset': ResetEvent;
   init: InitEvent;
 };
 
@@ -59,4 +60,5 @@ export type UrbitHttpApiEventType =
   | 'fact'
   | 'error'
   | 'reset'
+  | 'seamless-reset'
   | 'init';
