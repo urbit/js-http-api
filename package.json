@@ -3,11 +3,7 @@
   "version": "3.0.0",
   "license": "MIT",
   "description": "Library to interact with an Urbit ship over HTTP",
-  "repository": {
-    "type": "git",
-    "url": "ssh://git@github.com/urbit/urbit.git",
-    "directory": "pkg/npm/http-api"
-  },
+  "repository": "github:urbit/js-http-api",
   "type": "module",
   "main": "dist/cjs/index.cjs",
   "module": "dist/esm/index.js",
