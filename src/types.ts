@@ -176,8 +176,8 @@ export interface SubscriptionRequestInterface extends SubscriptionInterface {
 }
 
 export interface headers {
-  'Content-Type': string;
   Cookie?: string;
+  [headerName: string]: string;
 }
 
 export interface CustomEventHandler {

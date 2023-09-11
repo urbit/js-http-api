@@ -112,12 +112,18 @@ export class Urbit {
 
   /** This is basic interpolation to get the channel URL of an instantiated Urbit connection. */
   private get channelUrl(): string {
-    return `${this.url}/~/channel-jam/${this.uid}`;
+    return `${this.url}/~/channel/${this.uid}`;
   }
 
-  private get fetchOptions(): any {
-    const headers: headers = {
-      'Content-Type': 'application/json',
+  private fetchOptions(
+    method: ('PUT' | 'GET') = 'PUT',
+    mode: ('jam' | 'json') = 'jam')
+  : any {
+    const type = (mode === 'jam') ? 'application/x-urb-jam' : 'application/json';
+    let headers: headers = {};
+    switch (method) {
+      case 'PUT': headers['Content-Type']     = type; break;
+      case 'GET': headers['X-Channel-Format'] = type; break;
     };
     if (!isBrowser) {
       headers.Cookie = this.cookie;
@@ -304,7 +310,7 @@ export class Urbit {
         sseOptions.headers.Cookie = this.cookie;
       }
       fetchEventSource(this.channelUrl, {
-        ...this.fetchOptions,
+        ...this.fetchOptions('GET'),
         openWhenHidden: true,
         responseTimeout: 25000,
         onopen: async (response, isReconnect) => {
@@ -520,7 +526,7 @@ export class Urbit {
 
   private async sendNounToChannel(noun: any): Promise<void> {
     const response = await fetch(this.channelUrl, {
-      ...this.fetchOptions,
+      ...this.fetchOptions('PUT'),
       method: 'PUT',
       body: formatUw(Atom.fromString(jam(noun).toString().slice(2), 16).number.toString()),
     });
@@ -688,6 +694,7 @@ export class Urbit {
   /**
    * Deletes the connection to a channel.
    */
+  //TODO  noun-ify
   async delete() {
     const body = JSON.stringify([
       {
@@ -699,7 +706,7 @@ export class Urbit {
       navigator.sendBeacon(this.channelUrl, body);
     } else {
       const response = await fetch(this.channelUrl, {
-        ...this.fetchOptions,
+        ...this.fetchOptions('PUT', 'json'),
         method: 'POST',
         body: body,
       });
@@ -729,8 +736,8 @@ export class Urbit {
     const { app, path, mark } = params;
     console.log('scry', params)
     const response = await fetch(
-      `${this.url}/~/scry/${app}${path}.${ mark || 'json' }`,
-      this.fetchOptions
+      `${this.url}/~/scry/${app}${path}.${ mark || 'json' }`, //TODO jam by default
+      this.fetchOptions('GET')  //NOTE  mode doesn't matter, not opening channel
     );
 
     if (!response.ok) {
@@ -743,13 +750,13 @@ export class Urbit {
   /**
    * Run a thread
    *
-   *
    * @param inputMark   The mark of the data being sent
    * @param outputMark  The mark of the data being returned
    * @param threadName  The thread to run
    * @param body        The data to send to the thread
    * @returns  The return value of the thread
    */
+  //TODO  noun-ify once spider is compatible
   async thread<R, T = any>(params: Thread<T>): Promise<R> {
     const {
       inputMark,
@@ -764,7 +771,7 @@ export class Urbit {
     const res = await fetch(
       `${this.url}/spider/${desk}/${inputMark}/${threadName}/${outputMark}.json`,
       {
-        ...this.fetchOptions,
+        ...this.fetchOptions('PUT', 'json'),
         method: 'POST',
         body: JSON.stringify(body),
       }
