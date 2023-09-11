@@ -146,7 +146,7 @@ export interface SubscriptionInterface {
    * Handle negative %watch-ack
    */
   //TODO  id here is a string, but is number in most other places...
-  err?(error: any, id: string): void;
+  err?(id: number, error: any): void;
   /**
    * Handle %fact
    */

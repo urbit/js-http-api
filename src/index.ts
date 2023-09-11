@@ -1,4 +1,4 @@
-import { enjs } from './nockjs/noun';
+import { enjs } from '@urbit/nockjs';
 export * from './types';
 export * from './events';
 import { Urbit } from './Urbit';

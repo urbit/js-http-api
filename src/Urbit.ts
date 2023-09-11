@@ -18,8 +18,7 @@ import {
 } from './types';
 import EventEmitter, { hexString } from './utils';
 
-import { Noun, Atom, Cell, dwim } from './nockjs/noun';
-import { jam, cue } from './nockjs/serial';
+import { Noun, Atom, Cell, dwim, jam, cue } from '@urbit/nockjs';
 import { parseUw, formatUw, patp2dec } from '@urbit/aura';
 
 /**
@@ -362,12 +361,13 @@ export class Urbit {
 
           // [request-id channel-event]
           if ( data instanceof Cell &&
-               data.head instanceof Atom.Atom &&
+               data.head instanceof Atom &&
                data.tail instanceof Cell &&
-               data.tail.head instanceof Atom.Atom)
+               data.tail.head instanceof Atom)
           {
-            const id = data.head.valueOf();
-            const tag = Atom.Atom.cordToString(data.tail.head);
+            //NOTE  id could be string if id > 2^32, not expected in practice
+            const id = data.head.valueOf() as number;
+            const tag = Atom.cordToString(data.tail.head);
             const bod = data.tail.tail;
             // [%poke-ack p=(unit tang)]
             if (
@@ -375,7 +375,7 @@ export class Urbit {
               this.outstandingPokes.has(id)
             ) {
               const funcs = this.outstandingPokes.get(id);
-              if (bod instanceof Atom.Atom) {
+              if (bod instanceof Atom) {
                 funcs.onSuccess();
               } else {
                 //TODO  pre-render tang?
@@ -392,7 +392,7 @@ export class Urbit {
               if (bod instanceof Cell) {
                 //TODO  pre-render tang?
                 console.error(bod.tail);
-                funcs.err(bod.tail, id);
+                funcs.err(id, bod.tail);
                 this.outstandingSubscriptions.delete(id);
               }
             // [%fact =mark =noun]
@@ -403,7 +403,7 @@ export class Urbit {
               const funcs = this.outstandingSubscriptions.get(id);
               try {
                 //TODO  support binding conversion callback?
-                funcs.event(id, Atom.Atom.cordToString(bod.head), bod.tail);
+                funcs.event(id, Atom.cordToString(bod.head), bod.tail);
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
