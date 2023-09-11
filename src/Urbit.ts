@@ -1,8 +1,6 @@
 import { isBrowser, isNode } from 'browser-or-node';
-import {
-  fetchEventSource,
-  EventSourceMessage,
-} from '@fortaine/fetch-event-source';
+import { UrbitHttpApiEvent, UrbitHttpApiEventType } from './events';
+import { fetchEventSource, EventSourceMessage } from './fetch-event-source';
 
 import {
   Scry,
@@ -16,8 +14,9 @@ import {
   Message,
   FatalError,
   NounPath,
+  ReapError,
 } from './types';
-import { hexString } from './utils';
+import EventEmitter, { hexString } from './utils';
 
 import { Noun, Atom, Cell, dwim } from './nockjs/noun';
 import { jam, cue } from './nockjs/serial';
@@ -27,6 +26,11 @@ import { parseUw, formatUw, patp2dec } from '@urbit/aura';
  * A class for interacting with an urbit ship, given its URL and code
  */
 export class Urbit {
+  /**
+   * Event emitter for debugging, see events.ts for full list of events
+   */
+  private emitter = new EventEmitter();
+
   /**
    * UID will be used for the channel: The current unix time plus a random hex string
    */
@@ -85,6 +89,11 @@ export class Urbit {
   ship?: string | null;
 
   /**
+   * Our identity, with which we are authenticated into the ship
+   */
+  our?: string | null;
+
+  /**
    * If verbose, logs output eagerly.
    */
   verbose?: boolean;
@@ -99,6 +108,8 @@ export class Urbit {
   onRetry?: () => void = null;
 
   onOpen?: () => void = null;
+
+  onReconnect?: () => void = null;
 
   /** This is basic interpolation to get the channel URL of an instantiated Urbit connection. */
   private get channelUrl(): string {
@@ -166,9 +177,71 @@ export class Urbit {
     return airlock;
   }
 
+  private emit<T extends UrbitHttpApiEventType>(
+    event: T,
+    data: UrbitHttpApiEvent[T]
+  ) {
+    if (this.verbose) {
+      this.emitter.emit(event, data);
+    }
+  }
+
+  on<T extends UrbitHttpApiEventType>(
+    event: T,
+    callback: (data: UrbitHttpApiEvent[T]) => void
+  ): void {
+    this.emitter.on(event, callback);
+
+    this.verbose && console.log(event, 'listening active');
+    if (event === 'init') {
+      this.emitter.emit(event, {
+        uid: this.uid,
+        subscriptions: [...this.outstandingSubscriptions.entries()].map(
+          ([k, v]) => ({ id: k, app: v.app, path: v.path })
+        ),
+      });
+    }
+  }
+
+  /**
+   * Gets the name of the ship accessible at this.url and stores it to this.ship
+   *
+   */
+  async getShipName(): Promise<void> {
+    if (this.ship) {
+      return Promise.resolve();
+    }
+
+    const nameResp = await fetch(`${this.url}/~/host`, {
+      method: 'get',
+      credentials: 'include',
+    });
+    const name = await nameResp.text();
+    this.ship = name.substring(1);
+  }
+
+  /**
+   * Gets the name of the ship accessible at this.url and stores it to this.ship
+   *
+   */
+  async getOurName(): Promise<void> {
+    if (this.our) {
+      return Promise.resolve();
+    }
+
+    const nameResp = await fetch(`${this.url}/~/name`, {
+      method: 'get',
+      credentials: 'include',
+    });
+    const name = await nameResp.text();
+    this.our = name.substring(1);
+  }
+
   /**
    * Connects to the Urbit ship. Nothing can be done until this is called.
    * That's why we roll it into this.authenticate
+   * TODO  as of urbit/urbit#6561, this is no longer true, and we are able
+   *       to interact with the ship using a guest identity.
    */
   async connect(): Promise<void> {
     if (this.verbose) {
@@ -183,17 +256,22 @@ export class Urbit {
       method: 'post',
       body: `password=${this.code}`,
       credentials: 'include',
-    }).then((response) => {
+    }).then(async response => {
       if (this.verbose) {
         console.log('Received authentication response', response);
       }
+      if (response.status >= 200 && response.status < 300) {
+        throw new Error('Login failed with status ' + response.status);
+      }
       const cookie = response.headers.get('set-cookie');
-      if (!this.ship) {
+      if (!this.ship && cookie) {
         this.ship = new RegExp(/urbauth-~([\w-]+)/).exec(cookie)[1];
       }
       if (!isBrowser) {
         this.cookie = cookie;
       }
+      this.getShipName();
+      this.getOurName();
     });
   }
 
@@ -205,6 +283,7 @@ export class Urbit {
       return Promise.resolve();
     }
     if (this.lastEventId === 0) {
+      this.emit('status-update', { status: 'opening' });
       // Can't receive events until the channel is open,
       // so poke and open then
       //TODO  can we just send an empty array?
@@ -228,13 +307,20 @@ export class Urbit {
       fetchEventSource(this.channelUrl, {
         ...this.fetchOptions,
         openWhenHidden: true,
-        onopen: async (response) => {
+        responseTimeout: 25000,
+        onopen: async (response, isReconnect) => {
           if (this.verbose) {
             console.log('Opened eventsource', response);
+          }
+          if (isReconnect) {
+            this.onReconnect && this.onReconnect();
           }
           if (response.ok) {
             this.errorCount = 0;
             this.onOpen && this.onOpen();
+            this.emit('status-update', {
+              status: isReconnect ? 'reconnected' : 'active',
+            });
             resolve();
             return; // everything's good
           } else {
@@ -248,14 +334,22 @@ export class Urbit {
           }
           if (!event.id) return;
           const eventId = parseInt(event.id, 10);
+          this.emit('fact', {
+            id: eventId,
+            data: event.data,
+            time: Date.now(),
+          });
           if (eventId <= this.lastHeardEventId) {
-            console.log('dropping old or out-of-order event', {
-              eventId,
-              lastHeard: this.lastHeardEventId,
-            });
+            if (this.verbose) {
+              console.log('dropping old or out-of-order event', {
+                eventId,
+                lastHeard: this.lastHeardEventId,
+              });
+            }
             return;
           }
           this.lastHeardEventId = eventId;
+          this.emit('id-update', { lastHeard: this.lastHeardEventId });
           if (eventId - this.lastAcknowledgedEventId > 20) {
             this.ack(eventId);
           }
@@ -309,7 +403,7 @@ export class Urbit {
               const funcs = this.outstandingSubscriptions.get(id);
               try {
                 //TODO  support binding conversion callback?
-                funcs.event(Atom.Atom.cordToString(bod.head), bod.tail);
+                funcs.event(id, Atom.Atom.cordToString(bod.head), bod.tail);
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
@@ -321,7 +415,11 @@ export class Urbit {
               const funcs = this.outstandingSubscriptions.get(id);
               funcs.quit();
               this.outstandingSubscriptions.delete(id);
-            } else {
+              this.emit('subscription', {
+                id: id,
+                status: 'close',
+              });
+            } else if (this.verbose) {
               console.log([...this.outstandingSubscriptions.keys()]);
               console.log('Unrecognized response', data, data.toString());
             }
@@ -330,11 +428,18 @@ export class Urbit {
           }
         },
         onerror: (error) => {
-          console.warn(error);
-          if (!(error instanceof FatalError) && this.errorCount++ < 4) {
-            this.onRetry && this.onRetry();
-            return Math.pow(2, this.errorCount - 1) * 750;
+          this.errorCount++;
+          this.emit('error', { time: Date.now(), msg: JSON.stringify(error) });
+          if (error instanceof ReapError) {
+            this.seamlessReset();
+            return;
           }
+          if (!(error instanceof FatalError)) {
+            this.emit('status-update', { status: 'reconnecting' });
+            this.onRetry && this.onRetry();
+            return Math.min(5000, Math.pow(2, this.errorCount - 1) * 750);
+          }
+          this.emit('status-update', { status: 'errored' });
           this.onError && this.onError(error);
           throw error;
         },
@@ -358,6 +463,7 @@ export class Urbit {
     this.abort.abort();
     this.abort = new AbortController();
     this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
+    this.emit('reset', { uid: this.uid });
     this.lastEventId = 0;
     this.lastHeardEventId = -1;
     this.lastAcknowledgedEventId = -1;
@@ -366,11 +472,37 @@ export class Urbit {
     this.sseClientInitialized = false;
   }
 
+  private seamlessReset() {
+    // called if a channel was reaped by %eyre before we reconnected
+    // so we have to make a new channel.
+    this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
+    this.emit('seamless-reset', { uid: this.uid });
+    this.sseClientInitialized = false;
+    this.lastEventId = 0;
+    this.lastHeardEventId = -1;
+    this.lastAcknowledgedEventId = -1;
+    this.outstandingSubscriptions.forEach((sub, id) => {
+      sub.quit();
+      this.emit('subscription', {
+        id,
+        status: 'close',
+      });
+    });
+    this.outstandingSubscriptions = new Map();
+
+    this.outstandingPokes.forEach((poke, id) => {
+      poke.onError('Channel was reaped');
+    });
+    this.outstandingPokes = new Map();
+  }
+
   /**
    * Autoincrements the next event ID for the appropriate channel.
    */
   private getEventId(): number {
-    return ++this.lastEventId;
+    this.lastEventId += 1;
+    this.emit('id-update', { current: this.lastEventId });
+    return this.lastEventId;
   }
 
   /**
@@ -396,6 +528,9 @@ export class Urbit {
       throw new Error('Failed to PUT channel');
     }
     if (!this.sseClientInitialized) {
+      if (this.verbose) {
+        console.log('initializing event source');
+      }
       await this.eventSource();
     }
   }
@@ -409,6 +544,7 @@ export class Urbit {
    *
    * @returns The first fact on the subcription
    */
+  //TODO  T is always Noun now, so don't strictly need to parameterize
   async subscribeOnce<T = any>(app: string, path: NounPath, timeout?: number) {
     return new Promise<T>(async (resolve, reject) => {
       let done = false;
@@ -418,7 +554,7 @@ export class Urbit {
           reject('quit');
         }
       };
-      const event = (m: string, n: T) => {
+      const event = (id: number, m: string, n: T) => {
         if (!done) {
           resolve(n);  //TODO  revisit
           this.unsubscribe(id);
@@ -454,6 +590,11 @@ export class Urbit {
       shipName: this.ship,
       ...params,
     };
+
+    if (this.lastEventId === 0) {
+      this.emit('status-update', { status: 'opening' });
+    }
+
     const eventId = this.getEventId();
     const ship = Atom.fromString(patp2dec('~'+shipName), 10);
     // [%poke request-id=@ud ship=@p app=term mark=@tas =noun]
@@ -493,8 +634,11 @@ export class Urbit {
       ...params,
     };
 
-    const eventId = this.getEventId();
+    if (this.lastEventId === 0) {
+      this.emit('status-update', { status: 'opening' });
+    }
 
+    const eventId = this.getEventId();
     this.outstandingSubscriptions.set(eventId, {
       app,
       path,
@@ -503,15 +647,21 @@ export class Urbit {
       quit,
     });
 
+    this.emit('subscription', {
+      id: eventId,
+      app,
+      path: path.join('/'),
+      status: 'open',
+    });
+
     // [%subscribe request-id=@ud ship=@p app=term =path]
     const non = dwim([
       'subscribe',
       eventId,
-      Atom.fromString(patp2dec('~'+ship), 10),
+      Atom.fromString(patp2dec('~' + ship), 10),
       app,
       path,
     ], 0);
-
     await this.sendNounToChannel(non);
 
     return eventId;
@@ -526,7 +676,13 @@ export class Urbit {
     // [%unsubscribe request-id=@ud subscription-id=@ud]
     return this.sendNounToChannel(dwim(
       ['unsubscribe', this.getEventId(), subscription], 0
-    ));
+    )).then(() => {
+      this.emit('subscription', {
+        id: subscription,
+        status: 'close',
+      });
+      this.outstandingSubscriptions.delete(subscription);
+    });
   }
 
   /**

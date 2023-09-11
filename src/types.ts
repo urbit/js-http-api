@@ -150,7 +150,8 @@ export interface SubscriptionInterface {
   /**
    * Handle %fact
    */
-  event?(mark: string, data: any): void;
+  //TODO  give data Noun type?
+  event?(id: number, mark: string, data: any): void;
   /**
    * Handle %kick
    */
@@ -198,3 +199,5 @@ export interface Message extends Record<string, any> {
 export class ResumableError extends Error {}
 
 export class FatalError extends Error {}
+
+export class ReapError extends Error {}
