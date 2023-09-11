@@ -21,8 +21,7 @@ import { hexString } from './utils';
 
 import { Noun, Atom, Cell, dwim } from './nockjs/noun';
 import { jam, cue } from './nockjs/serial';
-import { patp2dec } from 'urbit-ob';
-import { parseUw, formatUw } from '@urbit/aura';
+import { parseUw, formatUw, patp2dec } from '@urbit/aura';
 
 /**
  * A class for interacting with an urbit ship, given its URL and code
