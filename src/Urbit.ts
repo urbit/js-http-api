@@ -79,7 +79,7 @@ export class Urbit {
   private abort = new AbortController();
 
   /**
-   * Ship can be set, in which case we can do some magic stuff like send chats
+   * Identity of the ship we're connected to
    */
   ship?: string | null;
 

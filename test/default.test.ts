@@ -27,6 +27,13 @@ function fakeSSE(messages: any[] = [], timeout = 0) {
 }
 
 const ship = '~sampel-palnet';
+function newUrbit(): Urbit {
+  let airlock = new Urbit('', '+code');
+  //NOTE  in a real environment, these get populated at the end of connect()
+  airlock.ship = airlock.our = ship.substring(1);
+  return airlock;
+}
+
 let eventId = 0;
 function event(data: any) {
   return `id:${eventId++}\ndata:${JSON.stringify(data)}\n\n`;
@@ -60,7 +67,7 @@ describe('Initialisation', () => {
   let airlock: Urbit;
   let fetchSpy: ReturnType<typeof jest.spyOn>;
   beforeEach(() => {
-    airlock = new Urbit('', '+code');
+    airlock = newUrbit();
   });
   afterEach(() => {
     fetchSpy.mockReset();
@@ -113,7 +120,7 @@ describe('subscription', () => {
 
   it('should subscribe', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
-    airlock = new Urbit('', '+code');
+    airlock = newUrbit();
     airlock.onOpen = jest.fn();
     const params = {
       app: 'app',
@@ -136,7 +143,7 @@ describe('subscription', () => {
   }, 800);
   it('should poke', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
-    airlock = new Urbit('', '+code');
+    airlock = newUrbit();
     airlock.onOpen = jest.fn();
     fetchSpy.mockImplementation(fakeFetch(() => fakeSSE([ack(1)])));
     const params = {
@@ -153,7 +160,7 @@ describe('subscription', () => {
 
   it('should nack poke', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
-    airlock = new Urbit('', '+code');
+    airlock = newUrbit();
     airlock.onOpen = jest.fn();
     fetchSpy
       .mockImplementationOnce(() =>
