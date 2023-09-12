@@ -4,5 +4,5 @@ require('cross-fetch/polyfill');
 require('fast-text-encoding');
 require('web-streams-polyfill');
 
-global.ReadableStream = require('web-streams-polyfill').ReadableStream; 
-  
+global.ReadableStream = require('web-streams-polyfill').ReadableStream;
+
