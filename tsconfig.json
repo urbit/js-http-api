@@ -16,9 +16,6 @@
     "noImplicitAny": true,
     "noErrorTruncation": true,
     "allowJs": true,
-    "baseUrl": ".",
-    "paths": {
-      "*": ["./node_modules/@types/*", "*"]
-    }
+    "baseUrl": "."
   }
 }

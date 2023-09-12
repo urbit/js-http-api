@@ -1,4 +1,4 @@
-import { FatalError, ReapError } from 'src/types';
+import { FatalError, ReapError } from '../types';
 import { EventSourceMessage, getBytes, getLines, getMessages } from './parse';
 
 export const EventStreamContentType = 'text/event-stream';
