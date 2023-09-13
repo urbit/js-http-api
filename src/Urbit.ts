@@ -586,22 +586,12 @@ export class Urbit {
       mark,
       json,
     };
-    const [send, result] = await Promise.all([
-      this.sendJSONtoChannel(message),
-      new Promise<number>((resolve, reject) => {
-        this.outstandingPokes.set(message.id, {
-          onSuccess: () => {
-            onSuccess();
-            resolve(message.id);
-          },
-          onError: (event) => {
-            onError(event);
-            reject(event.err);
-          },
-        });
-      }),
-    ]);
-    return result;
+    this.outstandingPokes.set(message.id, {
+      onSuccess: () => { onSuccess(); },
+      onError: (err) => { onError(err); },
+    });
+    await this.sendJSONtoChannel(message);
+    return message.id;
   }
 
   /**
