@@ -1,7 +1,7 @@
 import Urbit from '../src';
 import 'jest';
 
-function fakeSSE(messages = [], timeout = 0) {
+function fakeSSE(messages: any[] = [], timeout = 0) {
   const ourMessages = [...messages];
   const enc = new TextEncoder();
   return new ReadableStream({
@@ -27,6 +27,13 @@ function fakeSSE(messages = [], timeout = 0) {
 }
 
 const ship = '~sampel-palnet';
+function newUrbit(): Urbit {
+  let airlock = new Urbit('', '+code');
+  //NOTE  in a real environment, these get populated at the end of connect()
+  airlock.ship = airlock.our = ship.substring(1);
+  return airlock;
+}
+
 let eventId = 0;
 function event(data: any) {
   return `id:${eventId++}\ndata:${JSON.stringify(data)}\n\n`;
@@ -44,7 +51,7 @@ function ack(id: number, err = false) {
   const res = err ? { err: 'Error' } : { ok: true };
   return event({ id, response: 'poke', ...res });
 }
-const fakeFetch = (body) => () =>
+const fakeFetch = (body: Function) => () =>
   Promise.resolve({
     ok: true,
     body: body(),
@@ -58,9 +65,9 @@ process.on('unhandledRejection', (error) => {
 
 describe('Initialisation', () => {
   let airlock: Urbit;
-  let fetchSpy;
+  let fetchSpy: ReturnType<typeof jest.spyOn>;
   beforeEach(() => {
-    airlock = new Urbit('', '+code');
+    airlock = newUrbit();
   });
   afterEach(() => {
     fetchSpy.mockReset();
@@ -70,10 +77,10 @@ describe('Initialisation', () => {
     fetchSpy = jest.spyOn(window, 'fetch');
     fetchSpy
       .mockImplementationOnce(() =>
-        Promise.resolve({ ok: true, body: fakeSSE() })
+        Promise.resolve({ ok: true, body: fakeSSE() } as Response)
       )
       .mockImplementationOnce(() =>
-        Promise.resolve({ ok: true, body: fakeSSE([ack(1)]) })
+        Promise.resolve({ ok: true, body: fakeSSE([ack(1)]) } as Response)
       );
     await airlock.eventSource();
 
@@ -85,10 +92,10 @@ describe('Initialisation', () => {
     airlock.onOpen = jest.fn();
     fetchSpy
       .mockImplementationOnce(() =>
-        Promise.resolve({ ok: true, body: fakeSSE() })
+        Promise.resolve({ ok: true, body: fakeSSE() } as Response)
       )
       .mockImplementationOnce(() =>
-        Promise.resolve({ ok: true, body: fakeSSE([], 100) })
+        Promise.resolve({ ok: true, body: fakeSSE([], 100) } as Response)
       );
 
     airlock.onError = jest.fn();
@@ -113,7 +120,7 @@ describe('subscription', () => {
 
   it('should subscribe', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
-    airlock = new Urbit('', '+code');
+    airlock = newUrbit();
     airlock.onOpen = jest.fn();
     const params = {
       app: 'app',
@@ -124,19 +131,19 @@ describe('subscription', () => {
     };
     const firstEv = 'one';
     const secondEv = 'two';
-    const events = (id) => [fact(id, firstEv), fact(id, secondEv)];
+    const events = (id: number) => [fact(id, firstEv), fact(id, secondEv)];
     fetchSpy.mockImplementation(fakeFetch(() => fakeSSE(events(1))));
 
     await airlock.subscribe(params);
     await wait(600);
 
     expect(airlock.onOpen).toBeCalled();
-    expect(params.event).toHaveBeenNthCalledWith(1, firstEv, 'json');
-    expect(params.event).toHaveBeenNthCalledWith(2, secondEv, 'json');
+    expect(params.event).toHaveBeenNthCalledWith(1, firstEv, 'json', 1);
+    expect(params.event).toHaveBeenNthCalledWith(2, secondEv, 'json', 1);
   }, 800);
-  it('should poke', async () => {
+  it('should handle poke acks', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
-    airlock = new Urbit('', '+code');
+    airlock = newUrbit();
     airlock.onOpen = jest.fn();
     fetchSpy.mockImplementation(fakeFetch(() => fakeSSE([ack(1)])));
     const params = {
@@ -151,17 +158,13 @@ describe('subscription', () => {
     expect(params.onSuccess).toHaveBeenCalled();
   }, 800);
 
-  it('should nack poke', async () => {
+  it('should handle poke nacks', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
-    airlock = new Urbit('', '+code');
+    airlock = newUrbit();
     airlock.onOpen = jest.fn();
     fetchSpy
-      .mockImplementationOnce(() =>
-        Promise.resolve({ ok: true, body: fakeSSE() })
-      )
-      .mockImplementationOnce(() =>
-        Promise.resolve({ ok: false, body: fakeSSE([ack(1, true)]) })
-      );
+      .mockImplementationOnce(fakeFetch(() => fakeSSE()))
+      .mockImplementationOnce(fakeFetch(() => fakeSSE([ack(1, true)])));
 
     const params = {
       app: 'app',
@@ -170,11 +173,8 @@ describe('subscription', () => {
       onSuccess: jest.fn(),
       onError: jest.fn(),
     };
-    try {
-      await airlock.poke(params);
-      await wait(300);
-    } catch (e) {
-      expect(true).toBe(true);
-    }
-  });
+    await airlock.poke(params);
+    await wait(300);
+    expect(params.onError).toHaveBeenCalled();
+  }, 800);
 });

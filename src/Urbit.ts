@@ -83,7 +83,7 @@ export class Urbit {
   private abort = new AbortController();
 
   /**
-   * Ship can be set, in which case we can do some magic stuff like send chats
+   * Identity of the ship we're connected to
    */
   ship?: string | null;
 
@@ -159,6 +159,9 @@ export class Urbit {
    * then opens the channel via EventSource.
    *
    */
+  //TODO  rename this to connect() and only do constructor & event source setup.
+  //      that way it can be used with the assumption that you're already
+  //      authenticated.
   static async authenticate({
     ship,
     url,
@@ -248,6 +251,7 @@ export class Urbit {
    * TODO  as of urbit/urbit#6561, this is no longer true, and we are able
    *       to interact with the ship using a guest identity.
    */
+  //TODO  rename to authenticate() and call connect() at the end
   async connect(): Promise<void> {
     if (this.verbose) {
       console.log(
@@ -602,25 +606,15 @@ export class Urbit {
     }
 
     const eventId = this.getEventId();
-    const ship = Atom.fromString(patp2dec('~'+shipName), 10);
+    const ship = Atom.fromString(patp2dec('~' + shipName), 10);
     // [%poke request-id=@ud ship=@p app=term mark=@tas =noun]
     const non = dwim(['poke', eventId, ship, app, mark, noun], 0);
-    const [send, result] = await Promise.all([
-      this.sendNounToChannel(non),
-      new Promise<number>((resolve, reject) => {
-        this.outstandingPokes.set(eventId, {
-          onSuccess: () => {
-            onSuccess();
-            resolve(eventId);
-          },
-          onError: (event) => {
-            onError(event);
-            reject(event.err);
-          },
-        });
-      }),
-    ]);
-    return result;
+    this.outstandingPokes.set(eventId, {
+      onSuccess: () => { onSuccess(); },
+      onError: (err) => { onError(err); },
+    });
+    await this.sendNounToChannel(non);
+    return eventId;
   }
 
   /**
