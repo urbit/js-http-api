@@ -4,6 +4,7 @@
  * `"/updates"`
  */
 export type Path = string;
+export type NounPath = string[];  //NOTE  must contain trailing ~
 
 /**
  * @p including leading sig, rendered as a string
@@ -67,14 +68,13 @@ export interface Poke<Action> {
    */
   app: GallAgent;
   /**
-   * Mark of the cage to be poked
-   *
+   * Mark of the noun to poke with
    */
   mark: Mark;
   /**
-   * Vase of the cage of to be poked, as JSON
+   * Noun to poke with
    */
-  json: Action;
+  noun: any;  //TODO  revisit
 }
 
 /**
@@ -85,6 +85,7 @@ export interface Scry {
   app: GallAgent;
   /** {@inheritDoc Path} */
   path: Path;
+  mark?: Mark;
 }
 
 /**
@@ -144,15 +145,17 @@ export interface SubscriptionInterface {
   /**
    * Handle negative %watch-ack
    */
-  err?(error: any, id: string): void;
+  //TODO  id here is a string, but is number in most other places...
+  err?(id: number, error: any): void;
   /**
    * Handle %fact
    */
-  event?(data: any, mark: string, id: number): void;
+  //TODO  give data Noun type?
+  event?(id: number, mark: string, data: any): void;
   /**
    * Handle %kick
    */
-  quit?(data: any): void;
+  quit?(): void;
 }
 
 export type OnceSubscriptionErr = 'quit' | 'nack' | 'timeout';
@@ -167,14 +170,14 @@ export interface SubscriptionRequestInterface extends SubscriptionInterface {
   /**
    * The path to which to subscribe
    * @example
-   * `"/keys"`
+   * `['keys', 0]`
    */
-  path: Path;
+  path: NounPath;
 }
 
 export interface headers {
-  'Content-Type': string;
   Cookie?: string;
+  [headerName: string]: string;
 }
 
 export interface CustomEventHandler {

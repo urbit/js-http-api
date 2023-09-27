@@ -13,9 +13,13 @@ import {
   PokeHandlers,
   Message,
   FatalError,
+  NounPath,
   ReapError,
 } from './types';
 import EventEmitter, { hexString } from './utils';
+
+import { Noun, Atom, Cell, dwim, jam, cue } from '@urbit/nockjs';
+import { parseUw, formatUw, patp2dec } from '@urbit/aura';
 
 /**
  * A class for interacting with an urbit ship, given its URL and code
@@ -111,9 +115,15 @@ export class Urbit {
     return `${this.url}/~/channel/${this.uid}`;
   }
 
-  private get fetchOptions(): any {
-    const headers: headers = {
-      'Content-Type': 'application/json',
+  private fetchOptions(
+    method: ('PUT' | 'GET') = 'PUT',
+    mode: ('jam' | 'json') = 'jam')
+  : any {
+    const type = (mode === 'jam') ? 'application/x-urb-jam' : 'application/json';
+    let headers: headers = {};
+    switch (method) {
+      case 'PUT': headers['Content-Type']     = type; break;
+      case 'GET': headers['X-Channel-Format'] = type; break;
     };
     if (!isBrowser) {
       headers.Cookie = this.cookie;
@@ -149,6 +159,9 @@ export class Urbit {
    * then opens the channel via EventSource.
    *
    */
+  //TODO  rename this to connect() and only do constructor & event source setup.
+  //      that way it can be used with the assumption that you're already
+  //      authenticated.
   static async authenticate({
     ship,
     url,
@@ -162,10 +175,11 @@ export class Urbit {
     airlock.verbose = verbose;
     airlock.ship = ship;
     await airlock.connect();
+    //TODO  can we just send an empty array?
     await airlock.poke({
       app: 'hood',
       mark: 'helm-hi',
-      json: 'opening airlock',
+      noun: dwim('opening airlock'),
     });
     await airlock.eventSource();
     return airlock;
@@ -237,6 +251,7 @@ export class Urbit {
    * TODO  as of urbit/urbit#6561, this is no longer true, and we are able
    *       to interact with the ship using a guest identity.
    */
+  //TODO  rename to authenticate() and call connect() at the end
   async connect(): Promise<void> {
     if (this.verbose) {
       console.log(
@@ -280,10 +295,11 @@ export class Urbit {
       this.emit('status-update', { status: 'opening' });
       // Can't receive events until the channel is open,
       // so poke and open then
+      //TODO  can we just send an empty array?
       await this.poke({
         app: 'hood',
         mark: 'helm-hi',
-        json: 'Opening API channel',
+        noun: dwim('Opening API channel'),
       });
       return;
     }
@@ -298,7 +314,7 @@ export class Urbit {
         sseOptions.headers.Cookie = this.cookie;
       }
       fetchEventSource(this.channelUrl, {
-        ...this.fetchOptions,
+        ...this.fetchOptions('GET'),
         openWhenHidden: true,
         responseTimeout: 25000,
         onopen: async (response, isReconnect) => {
@@ -347,58 +363,80 @@ export class Urbit {
             this.ack(eventId);
           }
 
-          if (event.data && JSON.parse(event.data)) {
-            const data: any = JSON.parse(event.data);
+          let data: any;
+          if (event.data) {
+            data = cue(Atom.fromString(parseUw(event.data).toString()));
+            console.log('got real data', data.toString());
+          }
 
+          // [request-id channel-event]
+          if ( data instanceof Cell &&
+               data.head instanceof Atom &&
+               data.tail instanceof Cell &&
+               data.tail.head instanceof Atom)
+          {
+            //NOTE  id could be string if id > 2^32, not expected in practice
+            const id = data.head.valueOf() as number;
+            const tag = Atom.cordToString(data.tail.head);
+            const bod = data.tail.tail;
+            // [%poke-ack p=(unit tang)]
             if (
-              data.response === 'poke' &&
-              this.outstandingPokes.has(data.id)
+              tag === 'poke-ack' &&
+              this.outstandingPokes.has(id)
             ) {
-              const funcs = this.outstandingPokes.get(data.id);
-              if (data.hasOwnProperty('ok')) {
+              const funcs = this.outstandingPokes.get(id);
+              if (bod instanceof Atom) {
                 funcs.onSuccess();
-              } else if (data.hasOwnProperty('err')) {
-                console.error(data.err);
-                funcs.onError(data.err);
               } else {
-                console.error('Invalid poke response', data);
+                //TODO  pre-render tang?
+                console.error(bod.tail);
+                funcs.onError(bod.tail);
               }
-              this.outstandingPokes.delete(data.id);
+              this.outstandingPokes.delete(id);
+            // [%watch-ack p=(unit tang)]
             } else if (
-              data.response === 'subscribe' &&
-              this.outstandingSubscriptions.has(data.id)
+              tag === 'watch-ack' &&
+              this.outstandingSubscriptions.has(id)
             ) {
-              const funcs = this.outstandingSubscriptions.get(data.id);
-              if (data.hasOwnProperty('err')) {
-                console.error(data.err);
-                funcs.err(data.err, data.id);
-                this.outstandingSubscriptions.delete(data.id);
+              const funcs = this.outstandingSubscriptions.get(id);
+              if (bod instanceof Cell) {
+                //TODO  pre-render tang?
+                console.error(bod.tail);
+                funcs.err(id, bod.tail);
+                this.outstandingSubscriptions.delete(id);
               }
+            // [%fact =desk =mark =noun]
             } else if (
-              data.response === 'diff' &&
-              this.outstandingSubscriptions.has(data.id)
+              tag === 'fact' &&
+              this.outstandingSubscriptions.has(id)
             ) {
-              const funcs = this.outstandingSubscriptions.get(data.id);
+              const funcs = this.outstandingSubscriptions.get(id);
               try {
-                funcs.event(data.json, data.mark ?? 'json', data.id);
+                //TODO  support binding conversion callback?
+                const mark = Atom.cordToString(bod.tail.head);
+                //NOTE  we don't pass the desk. it's a leak-y eyre impl detail
+                funcs.event(id, mark, bod.tail.tail);
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
+            // [%kick ~]
             } else if (
-              data.response === 'quit' &&
-              this.outstandingSubscriptions.has(data.id)
+              tag === 'kick' &&
+              this.outstandingSubscriptions.has(id)
             ) {
-              const funcs = this.outstandingSubscriptions.get(data.id);
-              funcs.quit(data);
-              this.outstandingSubscriptions.delete(data.id);
+              const funcs = this.outstandingSubscriptions.get(id);
+              funcs.quit();
+              this.outstandingSubscriptions.delete(id);
               this.emit('subscription', {
-                id: data.id,
+                id: id,
                 status: 'close',
               });
             } else if (this.verbose) {
               console.log([...this.outstandingSubscriptions.keys()]);
-              console.log('Unrecognized response', data);
+              console.log('Unrecognized response', data, data.toString());
             }
+          } else {
+            console.log('strange event noun', data.toString());
           }
         },
         onerror: (error) => {
@@ -456,10 +494,7 @@ export class Urbit {
     this.lastHeardEventId = -1;
     this.lastAcknowledgedEventId = -1;
     this.outstandingSubscriptions.forEach((sub, id) => {
-      sub.quit({
-        id,
-        response: 'quit',
-      });
+      sub.quit();
       this.emit('subscription', {
         id,
         status: 'close',
@@ -489,20 +524,17 @@ export class Urbit {
    */
   private async ack(eventId: number): Promise<number | void> {
     this.lastAcknowledgedEventId = eventId;
-    this.emit('id-update', { lastAcknowledged: eventId });
-    const message: Message = {
-      action: 'ack',
-      'event-id': eventId,
-    };
-    await this.sendJSONtoChannel(message);
+    // [%ack event-id=@ud]
+    const non = dwim(['ack', eventId], 0);
+    await this.sendNounToChannel(non);
     return eventId;
   }
 
-  private async sendJSONtoChannel(...json: Message[]): Promise<void> {
+  private async sendNounToChannel(noun: any): Promise<void> {
     const response = await fetch(this.channelUrl, {
-      ...this.fetchOptions,
+      ...this.fetchOptions('PUT'),
       method: 'PUT',
-      body: JSON.stringify(json),
+      body: formatUw(jam(noun).number.toString()),
     });
     if (!response.ok) {
       throw new Error('Failed to PUT channel');
@@ -524,7 +556,8 @@ export class Urbit {
    *
    * @returns The first fact on the subcription
    */
-  async subscribeOnce<T = any>(app: string, path: string, timeout?: number) {
+  //TODO  T is always Noun now, so don't strictly need to parameterize
+  async subscribeOnce<T = any>(app: string, path: NounPath, timeout?: number) {
     return new Promise<T>(async (resolve, reject) => {
       let done = false;
       let id: number | null = null;
@@ -533,9 +566,9 @@ export class Urbit {
           reject('quit');
         }
       };
-      const event = (e: T, mark: string, id: number) => {
+      const event = (id: number, m: string, n: T) => {
         if (!done) {
-          resolve(e);
+          resolve(n);  //TODO  revisit
           this.unsubscribe(id);
         }
       };
@@ -560,13 +593,13 @@ export class Urbit {
    *
    * @param app The app to poke
    * @param mark The mark of the data being sent
-   * @param json The data to send
+   * @param noun The data to send
    */
   async poke<T>(params: PokeInterface<T>): Promise<number> {
-    const { app, mark, json, ship, onSuccess, onError } = {
+    const { app, mark, noun, shipName, onSuccess, onError } = {
       onSuccess: () => {},
       onError: () => {},
-      ship: this.ship,
+      shipName: this.ship,
       ...params,
     };
 
@@ -574,30 +607,16 @@ export class Urbit {
       this.emit('status-update', { status: 'opening' });
     }
 
-    const message: Message = {
-      id: this.getEventId(),
-      action: 'poke',
-      ship,
-      app,
-      mark,
-      json,
-    };
-    const [send, result] = await Promise.all([
-      this.sendJSONtoChannel(message),
-      new Promise<number>((resolve, reject) => {
-        this.outstandingPokes.set(message.id, {
-          onSuccess: () => {
-            onSuccess();
-            resolve(message.id);
-          },
-          onError: (event) => {
-            onError(event);
-            reject(event.err);
-          },
-        });
-      }),
-    ]);
-    return result;
+    const eventId = this.getEventId();
+    const ship = Atom.fromString(patp2dec('~' + shipName), 10);
+    // [%poke request-id=@ud ship=@p app=term mark=@tas =noun]
+    const non = dwim(['poke', eventId, ship, app, mark, noun], 0);
+    this.outstandingPokes.set(eventId, {
+      onSuccess: () => { onSuccess(); },
+      onError: (err) => { onError(err); },
+    });
+    await this.sendNounToChannel(non);
+    return eventId;
   }
 
   /**
@@ -621,15 +640,8 @@ export class Urbit {
       this.emit('status-update', { status: 'opening' });
     }
 
-    const message: Message = {
-      id: this.getEventId(),
-      action: 'subscribe',
-      ship,
-      app,
-      path,
-    };
-
-    this.outstandingSubscriptions.set(message.id, {
+    const eventId = this.getEventId();
+    this.outstandingSubscriptions.set(eventId, {
       app,
       path,
       err,
@@ -638,15 +650,23 @@ export class Urbit {
     });
 
     this.emit('subscription', {
-      id: message.id,
+      id: eventId,
       app,
-      path,
+      path: path.join('/'),
       status: 'open',
     });
 
-    await this.sendJSONtoChannel(message);
+    // [%subscribe request-id=@ud ship=@p app=term =path]
+    const non = dwim([
+      'subscribe',
+      eventId,
+      Atom.fromString(patp2dec('~' + ship), 10),
+      app,
+      path,
+    ], 0);
+    await this.sendNounToChannel(non);
 
-    return message.id;
+    return eventId;
   }
 
   /**
@@ -655,11 +675,10 @@ export class Urbit {
    * @param subscription
    */
   async unsubscribe(subscription: number) {
-    return this.sendJSONtoChannel({
-      id: this.getEventId(),
-      action: 'unsubscribe',
-      subscription,
-    }).then(() => {
+    // [%unsubscribe request-id=@ud subscription-id=@ud]
+    return this.sendNounToChannel(dwim(
+      ['unsubscribe', this.getEventId(), subscription], 0
+    )).then(() => {
       this.emit('subscription', {
         id: subscription,
         status: 'close',
@@ -671,6 +690,7 @@ export class Urbit {
   /**
    * Deletes the connection to a channel.
    */
+  //TODO  noun-ify
   async delete() {
     const body = JSON.stringify([
       {
@@ -682,7 +702,7 @@ export class Urbit {
       navigator.sendBeacon(this.channelUrl, body);
     } else {
       const response = await fetch(this.channelUrl, {
-        ...this.fetchOptions,
+        ...this.fetchOptions('PUT', 'json'),
         method: 'POST',
         body: body,
       });
@@ -709,10 +729,11 @@ export class Urbit {
    * @returns The scry result
    */
   async scry<T = any>(params: Scry): Promise<T> {
-    const { app, path } = params;
+    const { app, path, mark } = params;
+    console.log('scry', params)
     const response = await fetch(
-      `${this.url}/~/scry/${app}${path}.json`,
-      this.fetchOptions
+      `${this.url}/~/scry/${app}${path}.${ mark || 'json' }`, //TODO jam by default
+      this.fetchOptions('GET')  //NOTE  mode doesn't matter, not opening channel
     );
 
     if (!response.ok) {
@@ -725,13 +746,13 @@ export class Urbit {
   /**
    * Run a thread
    *
-   *
    * @param inputMark   The mark of the data being sent
    * @param outputMark  The mark of the data being returned
    * @param threadName  The thread to run
    * @param body        The data to send to the thread
    * @returns  The return value of the thread
    */
+  //TODO  noun-ify once spider is compatible
   async thread<R, T = any>(params: Thread<T>): Promise<R> {
     const {
       inputMark,
@@ -746,7 +767,7 @@ export class Urbit {
     const res = await fetch(
       `${this.url}/spider/${desk}/${inputMark}/${threadName}/${outputMark}.json`,
       {
-        ...this.fetchOptions,
+        ...this.fetchOptions('PUT', 'json'),
         method: 'POST',
         body: JSON.stringify(body),
       }

@@ -1,5 +1,23 @@
-import Urbit from '../src';
+import Urbit, { NounPath } from '../src';
+import { Noun, Atom, Cell, jam, dwim } from '@urbit/nockjs';
+import { formatUw } from '@urbit/aura';
 import 'jest';
+
+function areNounsEqual(a: unknown, b: unknown): boolean | undefined {
+  const isANoun = a instanceof Atom || a instanceof Cell;
+  const isBNoun = b instanceof Atom || b instanceof Cell;
+
+  if (isANoun && isBNoun) {
+    return a.equals(b);
+  } else if (isANoun === isBNoun) {
+    return undefined;
+  } else {
+    return false;
+  }
+}
+
+//NOTE  for some reason, this function isn't in the ts defs yet
+(expect as any).addEqualityTesters([areNounsEqual]);
 
 function fakeSSE(messages: any[] = [], timeout = 0) {
   const ourMessages = [...messages];
@@ -35,21 +53,18 @@ function newUrbit(): Urbit {
 }
 
 let eventId = 0;
-function event(data: any) {
-  return `id:${eventId++}\ndata:${JSON.stringify(data)}\n\n`;
+function event(data: Noun) {
+  //TODO  bigint and BigInteger not compatible ):
+  return `id:${eventId++}\ndata:${formatUw(jam(data).number.toString())}\n\n`;
 }
 
-function fact(id: number, data: any) {
-  return event({
-    response: 'diff',
-    id,
-    json: data,
-  });
+function fact(id: number, desk: string, mark: string, noun: Noun) {
+  return event(dwim(id, 'fact', desk, mark, noun));
 }
 
 function ack(id: number, err = false) {
-  const res = err ? { err: 'Error' } : { ok: true };
-  return event({ id, response: 'poke', ...res });
+  const res: Noun = err ? dwim(0, 'my-cool-tang', 0) : dwim(0);
+  return event(dwim(id, 'poke-ack', res));
 }
 const fakeFetch = (body: Function) => () =>
   Promise.resolve({
@@ -124,24 +139,24 @@ describe('subscription', () => {
     airlock.onOpen = jest.fn();
     const params = {
       app: 'app',
-      path: '/path',
+      path: ['path', 0] as NounPath,
       err: jest.fn(),
       event: jest.fn(),
       quit: jest.fn(),
     };
-    const firstEv = 'one';
-    const secondEv = 'two';
-    const events = (id: number) => [fact(id, firstEv), fact(id, secondEv)];
+    const firstEv = dwim('one');
+    const secondEv = dwim('two');
+    const events = (id: number) => [fact(id, 'desk', 'mark', firstEv), fact(id, 'desk', 'mark', secondEv)];
     fetchSpy.mockImplementation(fakeFetch(() => fakeSSE(events(1))));
 
     await airlock.subscribe(params);
     await wait(600);
 
     expect(airlock.onOpen).toBeCalled();
-    expect(params.event).toHaveBeenNthCalledWith(1, firstEv, 'json', 1);
-    expect(params.event).toHaveBeenNthCalledWith(2, secondEv, 'json', 1);
+    expect(params.event).toHaveBeenNthCalledWith(1, 1, 'mark', firstEv);
+    expect(params.event).toHaveBeenNthCalledWith(2, 1, 'mark', secondEv);
   }, 800);
-  it('should poke', async () => {
+  it('should handle poke acks', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
     airlock = newUrbit();
     airlock.onOpen = jest.fn();
@@ -149,7 +164,7 @@ describe('subscription', () => {
     const params = {
       app: 'app',
       mark: 'mark',
-      json: { poke: 1 },
+      noun: dwim(1),
       onSuccess: jest.fn(),
       onError: jest.fn(),
     };
@@ -158,30 +173,23 @@ describe('subscription', () => {
     expect(params.onSuccess).toHaveBeenCalled();
   }, 800);
 
-  it('should nack poke', async () => {
+  it('should handle poke nacks', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
     airlock = newUrbit();
     airlock.onOpen = jest.fn();
     fetchSpy
-      .mockImplementationOnce(() =>
-        Promise.resolve({ ok: true, body: fakeSSE() })
-      )
-      .mockImplementationOnce(() =>
-        Promise.resolve({ ok: false, body: fakeSSE([ack(1, true)]) })
-      );
+      .mockImplementationOnce(fakeFetch(() => fakeSSE()))
+      .mockImplementationOnce(fakeFetch(() => fakeSSE([ack(1, true)])));
 
     const params = {
       app: 'app',
       mark: 'mark',
-      json: { poke: 1 },
+      noun: dwim(1),
       onSuccess: jest.fn(),
       onError: jest.fn(),
     };
-    try {
-      await airlock.poke(params);
-      await wait(300);
-    } catch (e) {
-      expect(true).toBe(true);
-    }
-  });
+    await airlock.poke(params);
+    await wait(300);
+    expect(params.onError).toHaveBeenCalled();
+  }, 800);
 });
