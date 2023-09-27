@@ -534,7 +534,7 @@ export class Urbit {
     const response = await fetch(this.channelUrl, {
       ...this.fetchOptions('PUT'),
       method: 'PUT',
-      body: formatUw(Atom.fromString(jam(noun).toString().slice(2), 16).number.toString()),
+      body: formatUw(jam(noun).number.toString()),
     });
     if (!response.ok) {
       throw new Error('Failed to PUT channel');
