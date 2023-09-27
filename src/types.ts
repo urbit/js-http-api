@@ -4,7 +4,7 @@
  * `"/updates"`
  */
 export type Path = string;
-export type NounPath = [string];
+export type NounPath = string[];  //NOTE  must contain trailing ~
 
 /**
  * @p including leading sig, rendered as a string
