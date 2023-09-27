@@ -405,7 +405,7 @@ export class Urbit {
                 funcs.err(id, bod.tail);
                 this.outstandingSubscriptions.delete(id);
               }
-            // [%fact =mark =noun]
+            // [%fact =desk =mark =noun]
             } else if (
               tag === 'fact' &&
               this.outstandingSubscriptions.has(id)
@@ -413,7 +413,9 @@ export class Urbit {
               const funcs = this.outstandingSubscriptions.get(id);
               try {
                 //TODO  support binding conversion callback?
-                funcs.event(id, Atom.cordToString(bod.head), bod.tail);
+                const mark = Atom.cordToString(bod.tail.head);
+                //NOTE  we don't pass the desk. it's a leak-y eyre impl detail
+                funcs.event(id, mark, bod.tail.tail);
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
