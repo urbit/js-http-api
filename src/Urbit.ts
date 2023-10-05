@@ -426,7 +426,6 @@ export class Urbit {
       poke.onError('Channel was reaped');
     });
     this.outstandingPokes = new Map();
-    this.eventSource();
   }
 
   /**
