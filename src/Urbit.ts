@@ -359,6 +359,7 @@ export class Urbit {
           this.errorCount++;
           this.emit('error', { time: Date.now(), msg: JSON.stringify(error) });
           if (error instanceof ReapError) {
+            this.emit('status-update', { status: 'initial' });
             this.seamlessReset();
             return;
           }
