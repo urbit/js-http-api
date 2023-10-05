@@ -359,7 +359,6 @@ export class Urbit {
           this.errorCount++;
           this.emit('error', { time: Date.now(), msg: JSON.stringify(error) });
           if (error instanceof ReapError) {
-            this.emit('status-update', { status: 'initial' });
             this.seamlessReset();
             return;
           }
@@ -405,6 +404,7 @@ export class Urbit {
     // called if a channel was reaped by %eyre before we reconnected
     // so we have to make a new channel.
     this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
+    this.emit('status-update', { status: 'initial' });
     this.emit('seamless-reset', { uid: this.uid });
     this.sseClientInitialized = false;
     this.lastEventId = 0;
