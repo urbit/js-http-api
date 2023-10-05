@@ -409,7 +409,9 @@ export class Urbit {
     this.lastEventId = 0;
     this.lastHeardEventId = -1;
     this.lastAcknowledgedEventId = -1;
-    this.outstandingSubscriptions.forEach((sub, id) => {
+    const oldSubs = [...this.outstandingSubscriptions.entries()];
+    this.outstandingSubscriptions = new Map();
+    oldSubs.forEach(([id, sub]) => {
       sub.quit({
         id,
         response: 'quit',
@@ -419,12 +421,12 @@ export class Urbit {
         status: 'close',
       });
     });
-    this.outstandingSubscriptions = new Map();
 
     this.outstandingPokes.forEach((poke, id) => {
       poke.onError('Channel was reaped');
     });
     this.outstandingPokes = new Map();
+    this.eventSource();
   }
 
   /**

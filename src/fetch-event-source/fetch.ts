@@ -139,7 +139,6 @@ export function fetchEventSource(
         }
 
         await onopen(response, isReconnect);
-
         // reset reconnect status
         if (isReconnect) {
           isReconnect = false;
