@@ -404,8 +404,8 @@ export class Urbit {
     // called if a channel was reaped by %eyre before we reconnected
     // so we have to make a new channel.
     this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
-    this.emit('status-update', { status: 'initial' });
     this.emit('seamless-reset', { uid: this.uid });
+    this.emit('status-update', { status: 'initial' });
     this.sseClientInitialized = false;
     this.lastEventId = 0;
     this.lastHeardEventId = -1;
