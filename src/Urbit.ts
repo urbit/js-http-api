@@ -149,6 +149,9 @@ export class Urbit {
    * then opens the channel via EventSource.
    *
    */
+  //TODO  rename this to connect() and only do constructor & event source setup.
+  //      that way it can be used with the assumption that you're already
+  //      authenticated.
   static async authenticate({
     ship,
     url,
@@ -237,6 +240,7 @@ export class Urbit {
    * TODO  as of urbit/urbit#6561, this is no longer true, and we are able
    *       to interact with the ship using a guest identity.
    */
+  //TODO  rename to authenticate() and call connect() at the end
   async connect(): Promise<void> {
     if (this.verbose) {
       console.log(
@@ -582,22 +586,12 @@ export class Urbit {
       mark,
       json,
     };
-    const [send, result] = await Promise.all([
-      this.sendJSONtoChannel(message),
-      new Promise<number>((resolve, reject) => {
-        this.outstandingPokes.set(message.id, {
-          onSuccess: () => {
-            onSuccess();
-            resolve(message.id);
-          },
-          onError: (event) => {
-            onError(event);
-            reject(event.err);
-          },
-        });
-      }),
-    ]);
-    return result;
+    this.outstandingPokes.set(message.id, {
+      onSuccess: () => { onSuccess(); },
+      onError: (err) => { onError(err); },
+    });
+    await this.sendJSONtoChannel(message);
+    return message.id;
   }
 
   /**

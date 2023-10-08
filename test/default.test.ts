@@ -141,7 +141,7 @@ describe('subscription', () => {
     expect(params.event).toHaveBeenNthCalledWith(1, firstEv, 'json', 1);
     expect(params.event).toHaveBeenNthCalledWith(2, secondEv, 'json', 1);
   }, 800);
-  it('should poke', async () => {
+  it('should handle poke acks', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
     airlock = newUrbit();
     airlock.onOpen = jest.fn();
@@ -158,17 +158,13 @@ describe('subscription', () => {
     expect(params.onSuccess).toHaveBeenCalled();
   }, 800);
 
-  it('should nack poke', async () => {
+  it('should handle poke nacks', async () => {
     fetchSpy = jest.spyOn(window, 'fetch');
     airlock = newUrbit();
     airlock.onOpen = jest.fn();
     fetchSpy
-      .mockImplementationOnce(() =>
-        Promise.resolve({ ok: true, body: fakeSSE() })
-      )
-      .mockImplementationOnce(() =>
-        Promise.resolve({ ok: false, body: fakeSSE([ack(1, true)]) })
-      );
+      .mockImplementationOnce(fakeFetch(() => fakeSSE()))
+      .mockImplementationOnce(fakeFetch(() => fakeSSE([ack(1, true)])));
 
     const params = {
       app: 'app',
@@ -177,11 +173,8 @@ describe('subscription', () => {
       onSuccess: jest.fn(),
       onError: jest.fn(),
     };
-    try {
-      await airlock.poke(params);
-      await wait(300);
-    } catch (e) {
-      expect(true).toBe(true);
-    }
-  });
+    await airlock.poke(params);
+    await wait(300);
+    expect(params.onError).toHaveBeenCalled();
+  }, 800);
 });
