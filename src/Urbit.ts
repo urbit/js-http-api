@@ -455,11 +455,14 @@ export class Urbit {
     // so we have to make a new channel.
     this.uid = `${Math.floor(Date.now() / 1000)}-${hexString(6)}`;
     this.emit('seamless-reset', { uid: this.uid });
+    this.emit('status-update', { status: 'initial' });
     this.sseClientInitialized = false;
     this.lastEventId = 0;
     this.lastHeardEventId = -1;
     this.lastAcknowledgedEventId = -1;
-    this.outstandingSubscriptions.forEach((sub, id) => {
+    const oldSubs = [...this.outstandingSubscriptions.entries()];
+    this.outstandingSubscriptions = new Map();
+    oldSubs.forEach(([id, sub]) => {
       sub.quit({
         id,
         response: 'quit',
@@ -469,7 +472,6 @@ export class Urbit {
         status: 'close',
       });
     });
-    this.outstandingSubscriptions = new Map();
 
     this.outstandingPokes.forEach((poke, id) => {
       poke.onError('Channel was reaped');

@@ -128,7 +128,10 @@ export function fetchEventSource(
         ])) as Response;
 
         if (response.status === 404) {
-          throw new ReapError('Channel reaped');
+          onerror?.(new ReapError('Channel reaped'));
+          dispose();
+          resolve();
+          return;
         }
 
         if (response.status < 200 || response.status >= 300) {
@@ -136,7 +139,6 @@ export function fetchEventSource(
         }
 
         await onopen(response, isReconnect);
-
         // reset reconnect status
         if (isReconnect) {
           isReconnect = false;
