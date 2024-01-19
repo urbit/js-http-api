@@ -281,6 +281,19 @@ export class Urbit {
   /**
    * Initializes the SSE pipe for the appropriate channel.
    */
+  //TODO  rename to connect() maybe, if we figure out the other ones lol
+  //TODO  follow this pseudocode structure, it's Correct™
+  // if (weAreConnected) {
+  //   return;
+  // }
+  // else {
+  //   // create the channel if we have never heard from it before
+  //   if (wasNeverOpen)  //  aka lastEventId === 0
+  //     await this.sendNounsToChannel();
+  //   // the channel has been (or already was) created, (re)connect to it
+  //   connectionLogicBelow(lastEventId);
+  // }
+  //TODO  explicit success/failure return?
   async eventSource(): Promise<void> {
     if (this.sseClientInitialized) {
       return Promise.resolve();
