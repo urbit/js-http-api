@@ -18,7 +18,7 @@ import {
 } from './types';
 import EventEmitter, { hexString } from './utils';
 
-import { Noun, Atom, Cell, dwim, jam, cue } from '@urbit/nockjs';
+import { Noun, Atom, Cell, dwim, dejs, jam, cue } from '@urbit/nockjs';
 import { parseUw, formatUw, patp2dec } from '@urbit/aura';
 
 /**
@@ -175,7 +175,6 @@ export class Urbit {
     airlock.verbose = verbose;
     airlock.ship = ship;
     await airlock.connect();
-    //TODO  can we just send an empty array?
     await airlock.eventSource();
     return airlock;
   }
@@ -289,7 +288,7 @@ export class Urbit {
     this.emit('status-update', { status: 'opening' });
     // Can't receive events until the channel is open,
     // so send an empty list of commands to open it.
-    await this.sendNounToChannel(null);  //tmp  api change soon
+    await this.sendNounsToChannel();
     this.sseClientInitialized = true;
     return new Promise((resolve, reject) => {
       fetchEventSource(this.channelUrl, {
@@ -505,16 +504,17 @@ export class Urbit {
   private async ack(eventId: number): Promise<number | void> {
     this.lastAcknowledgedEventId = eventId;
     // [%ack event-id=@ud]
-    const non = dwim(['ack', eventId], 0);
-    await this.sendNounToChannel(non);
+    await this.sendNounsToChannel(['ack', eventId]);
     return eventId;
   }
 
-  private async sendNounToChannel(noun: any): Promise<void> {
+  //NOTE  every arg is interpreted (through nockjs.dwim) as a noun, which
+  //      should result in a noun nesting inside of the xx $eyre-command type
+  private async sendNounsToChannel(...args: any[]): Promise<void> {
     const response = await fetch(this.channelUrl, {
       ...this.fetchOptions('PUT'),
       method: 'PUT',
-      body: formatUw(jam(noun).number.toString()),
+      body: formatUw(jam(dejs.list(args)).number.toString()),
     });
     if (!response.ok) {
       throw new Error('Failed to PUT channel');
@@ -584,12 +584,12 @@ export class Urbit {
     const eventId = this.getEventId();
     const ship = Atom.fromString(patp2dec('~' + shipName), 10);
     // [%poke request-id=@ud ship=@p app=term mark=@tas =noun]
-    const non = dwim(['poke', eventId, ship, app, mark, noun], 0);
+    const non = ['poke', eventId, ship, app, mark, noun];
     this.outstandingPokes.set(eventId, {
       onSuccess: () => { onSuccess(); },
       onError: (err) => { onError(err); },
     });
-    await this.sendNounToChannel(non);
+    await this.sendNounsToChannel(non);
     return eventId;
   }
 
@@ -631,14 +631,14 @@ export class Urbit {
     });
 
     // [%subscribe request-id=@ud ship=@p app=term =path]
-    const non = dwim([
+    const non = [
       'subscribe',
       eventId,
       Atom.fromString(patp2dec('~' + ship), 10),
       app,
       path,
-    ], 0);
-    await this.sendNounToChannel(non);
+    ];
+    await this.sendNounsToChannel(non);
 
     return eventId;
   }
@@ -650,9 +650,9 @@ export class Urbit {
    */
   async unsubscribe(subscription: number) {
     // [%unsubscribe request-id=@ud subscription-id=@ud]
-    return this.sendNounToChannel(dwim(
-      ['unsubscribe', this.getEventId(), subscription], 0
-    )).then(() => {
+    return this.sendNounsToChannel(
+      ['unsubscribe', this.getEventId(), subscription]
+    ).then(() => {
       this.emit('subscription', {
         id: subscription,
         status: 'close',
