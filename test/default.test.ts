@@ -92,10 +92,10 @@ describe('Initialisation', () => {
     fetchSpy = jest.spyOn(window, 'fetch');
     fetchSpy
       .mockImplementationOnce(() =>
-        Promise.resolve({ ok: true, body: fakeSSE() } as Response)
+        Promise.resolve({ ok: true, body: null } as Response)
       )
       .mockImplementationOnce(() =>
-        Promise.resolve({ ok: true, body: fakeSSE([ack(1)]) } as Response)
+        Promise.resolve({ ok: true, body: fakeSSE() } as Response)
       );
     await airlock.eventSource();
 
@@ -147,8 +147,10 @@ describe('subscription', () => {
     const firstEv = dwim('one');
     const secondEv = dwim('two');
     const events = (id: number) => [fact(id, 'desk', 'mark', firstEv), fact(id, 'desk', 'mark', secondEv)];
-    fetchSpy.mockImplementation(fakeFetch(() => fakeSSE(events(1))));
+    fetchSpy
+      .mockImplementation(fakeFetch(() => fakeSSE(events(1))));
 
+    await airlock.eventSource();
     await airlock.subscribe(params);
     await wait(600);
 
@@ -168,6 +170,7 @@ describe('subscription', () => {
       onSuccess: jest.fn(),
       onError: jest.fn(),
     };
+    await airlock.eventSource();
     await airlock.poke(params);
     await wait(300);
     expect(params.onSuccess).toHaveBeenCalled();
@@ -177,8 +180,10 @@ describe('subscription', () => {
     fetchSpy = jest.spyOn(window, 'fetch');
     airlock = newUrbit();
     airlock.onOpen = jest.fn();
+    //TODO  response mocking should be more accurate/narrow
     fetchSpy
       .mockImplementationOnce(fakeFetch(() => fakeSSE()))
+      .mockImplementationOnce(fakeFetch(() => fakeSSE([ack(1, true)])))
       .mockImplementationOnce(fakeFetch(() => fakeSSE([ack(1, true)])));
 
     const params = {
@@ -188,6 +193,7 @@ describe('subscription', () => {
       onSuccess: jest.fn(),
       onError: jest.fn(),
     };
+    await airlock.eventSource();
     await airlock.poke(params);
     await wait(300);
     expect(params.onError).toHaveBeenCalled();

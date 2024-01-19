@@ -176,11 +176,6 @@ export class Urbit {
     airlock.ship = ship;
     await airlock.connect();
     //TODO  can we just send an empty array?
-    await airlock.poke({
-      app: 'hood',
-      mark: 'helm-hi',
-      noun: dwim('opening airlock'),
-    });
     await airlock.eventSource();
     return airlock;
   }
@@ -291,29 +286,15 @@ export class Urbit {
     if (this.sseClientInitialized) {
       return Promise.resolve();
     }
-    if (this.lastEventId === 0) {
-      this.emit('status-update', { status: 'opening' });
-      // Can't receive events until the channel is open,
-      // so poke and open then
-      //TODO  can we just send an empty array?
-      await this.poke({
-        app: 'hood',
-        mark: 'helm-hi',
-        noun: dwim('Opening API channel'),
-      });
-      return;
-    }
+    this.emit('status-update', { status: 'opening' });
+    // Can't receive events until the channel is open,
+    // so send an empty list of commands to open it.
+    await this.sendNounToChannel(null);  //tmp  api change soon
     this.sseClientInitialized = true;
     return new Promise((resolve, reject) => {
-      const sseOptions: SSEOptions = {
-        headers: {},
-      };
-      if (isBrowser) {
-        sseOptions.withCredentials = true;
-      } else if (isNode) {
-        sseOptions.headers.Cookie = this.cookie;
-      }
       fetchEventSource(this.channelUrl, {
+        //TODO  manually inject headers = { 'last-event-id': lastHeardEventId }
+        //      if needed
         ...this.fetchOptions('GET'),
         openWhenHidden: true,
         responseTimeout: 25000,
@@ -366,7 +347,6 @@ export class Urbit {
           let data: any;
           if (event.data) {
             data = cue(Atom.fromString(parseUw(event.data).toString()));
-            console.log('got real data', data.toString());
           }
 
           // [request-id channel-event]
@@ -538,12 +518,6 @@ export class Urbit {
     });
     if (!response.ok) {
       throw new Error('Failed to PUT channel');
-    }
-    if (!this.sseClientInitialized) {
-      if (this.verbose) {
-        console.log('initializing event source');
-      }
-      await this.eventSource();
     }
   }
 
