@@ -41,7 +41,7 @@
     "@rollup/plugin-node-resolve": "^13.0.6",
     "@types/browser-or-node": "^1.2.0",
     "@types/eventsource": "^1.1.5",
-    "@types/jest": "^26.0.24",
+    "@types/jest": "^29.5.5",
     "@types/react": "^16.9.56",
     "@typescript-eslint/eslint-plugin": "^4.7.0",
     "@typescript-eslint/parser": "^4.7.0",
