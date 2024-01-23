@@ -46,9 +46,9 @@ function fakeSSE(messages: any[] = [], timeout = 0) {
 
 const ship = '~sampel-palnet';
 function newUrbit(): Urbit {
-  let airlock = new Urbit('', '+code');
+  let airlock = new Urbit({ url: '' });
   //NOTE  in a real environment, these get populated at the end of connect()
-  airlock.ship = airlock.our = ship.substring(1);
+  airlock.ship = airlock.our = ship;
   return airlock;
 }
 
@@ -97,7 +97,7 @@ describe('Initialisation', () => {
       .mockImplementationOnce(() =>
         Promise.resolve({ ok: true, body: fakeSSE() } as Response)
       );
-    await airlock.eventSource();
+    await airlock.connect();
 
     expect(airlock.onOpen).toHaveBeenCalled();
   }, 500);
@@ -115,7 +115,7 @@ describe('Initialisation', () => {
 
     airlock.onError = jest.fn();
     try {
-      airlock.eventSource();
+      airlock.connect();
       await wait(200);
     } catch (e) {
       expect(airlock.onRetry).toHaveBeenCalled();
@@ -146,11 +146,13 @@ describe('subscription', () => {
     };
     const firstEv = dwim('one');
     const secondEv = dwim('two');
-    const events = (id: number) => [fact(id, 'desk', 'mark', firstEv), fact(id, 'desk', 'mark', secondEv)];
-    fetchSpy
-      .mockImplementation(fakeFetch(() => fakeSSE(events(1))));
+    const events = (id: number) => [
+      fact(id, 'desk', 'mark', firstEv),
+      fact(id, 'desk', 'mark', secondEv),
+    ];
+    fetchSpy.mockImplementation(fakeFetch(() => fakeSSE(events(1))));
 
-    await airlock.eventSource();
+    await airlock.connect();
     await airlock.subscribe(params);
     await wait(600);
 
@@ -170,7 +172,7 @@ describe('subscription', () => {
       onSuccess: jest.fn(),
       onError: jest.fn(),
     };
-    await airlock.eventSource();
+    await airlock.connect();
     await airlock.poke(params);
     await wait(300);
     expect(params.onSuccess).toHaveBeenCalled();
@@ -193,7 +195,7 @@ describe('subscription', () => {
       onSuccess: jest.fn(),
       onError: jest.fn(),
     };
-    await airlock.eventSource();
+    await airlock.connect();
     await airlock.poke(params);
     await wait(300);
     expect(params.onError).toHaveBeenCalled();

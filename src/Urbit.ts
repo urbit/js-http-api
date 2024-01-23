@@ -1,24 +1,22 @@
-import { isBrowser, isNode } from 'browser-or-node';
+import { isBrowser } from 'browser-or-node';
 import { UrbitHttpApiEvent, UrbitHttpApiEventType } from './events';
 import { fetchEventSource, EventSourceMessage } from './fetch-event-source';
 
 import {
   Scry,
   Thread,
-  AuthenticationInterface,
   PokeInterface,
   SubscriptionRequestInterface,
   headers,
-  SSEOptions,
   PokeHandlers,
-  Message,
   FatalError,
   NounPath,
   ReapError,
+  UrbitParams,
 } from './types';
 import EventEmitter, { hexString } from './utils';
 
-import { Noun, Atom, Cell, dwim, dejs, jam, cue } from '@urbit/nockjs';
+import { Atom, Cell, dejs, jam, cue, Noun } from '@urbit/nockjs';
 import { parseUw, formatUw, patp2dec } from '@urbit/aura';
 
 /**
@@ -83,9 +81,19 @@ export class Urbit {
   private abort = new AbortController();
 
   /**
+   * The URL of the ship we're connected to
+   */
+  url: string;
+
+  /**
    * Identity of the ship we're connected to
    */
   ship?: string | null;
+
+  /**
+   * Our access code
+   */
+  code?: string;
 
   /**
    * Our identity, with which we are authenticated into the ship
@@ -101,14 +109,22 @@ export class Urbit {
    * number of consecutive errors in connecting to the eventsource
    */
   private errorCount = 0;
-
-  onError?: (error: any) => void = null;
-
+  /**
+   * Called when the connection is established. Probably don't use this
+   * as a trigger for refetching data.
+   *
+   * @param reconnect - true if this is a reconnection
+   */
+  onOpen?: (reconnect: boolean) => void = null;
+  /**
+   * Called on every attempt to reconnect to the ship. Followed by onOpen
+   * or onError depending on whether the connection succeeds.
+   */
   onRetry?: () => void = null;
-
-  onOpen?: () => void = null;
-
-  onReconnect?: () => void = null;
+  /**
+   * Called when the connection fails irrecoverably
+   */
+  onError?: (error: any) => void = null;
 
   /** This is basic interpolation to get the channel URL of an instantiated Urbit connection. */
   private get channelUrl(): string {
@@ -116,15 +132,19 @@ export class Urbit {
   }
 
   private fetchOptions(
-    method: ('PUT' | 'GET') = 'PUT',
-    mode: ('jam' | 'json') = 'jam')
-  : any {
-    const type = (mode === 'jam') ? 'application/x-urb-jam' : 'application/json';
+    method: 'PUT' | 'GET' = 'PUT',
+    mode: 'jam' | 'json' = 'jam'
+  ): any {
+    const type = mode === 'jam' ? 'application/x-urb-jam' : 'application/json';
     let headers: headers = {};
     switch (method) {
-      case 'PUT': headers['Content-Type']     = type; break;
-      case 'GET': headers['X-Channel-Format'] = type; break;
-    };
+      case 'PUT':
+        headers['Content-Type'] = type;
+        break;
+      case 'GET':
+        headers['X-Channel-Format'] = type;
+        break;
+    }
     if (!isBrowser) {
       headers.Cookie = this.cookie;
     }
@@ -137,14 +157,17 @@ export class Urbit {
   }
 
   /**
-   * Constructs a new Urbit connection.
-   *
-   * @param url  The URL (with protocol and port) of the ship to be accessed. If
-   * the airlock is running in a webpage served by the ship, this should just
-   * be the empty string.
-   * @param code The access code for the ship at that address
+   * Constructs a new Urbit instance.
+   * @param params The configuration for connecting to an Urbit ship.
    */
-  constructor(public url: string, public code?: string, public desk?: string) {
+  constructor(params: UrbitParams) {
+    this.url = params.url;
+    this.code = params.code;
+    this.verbose = params.verbose || false;
+    this.onError = params.onError;
+    this.onRetry = params.onRetry;
+    this.onOpen = params.onOpen;
+
     if (isBrowser) {
       window.addEventListener('beforeunload', this.delete);
     }
@@ -155,27 +178,25 @@ export class Urbit {
    * All-in-one hook-me-up.
    *
    * Given a ship, url, and code, this returns an airlock connection
-   * that is ready to go. It `|hi`s itself to create the channel,
-   * then opens the channel via EventSource.
-   *
+   * that is ready to go. It creates a channel and connects to it.
    */
-  //TODO  rename this to connect() and only do constructor & event source setup.
-  //      that way it can be used with the assumption that you're already
-  //      authenticated.
-  static async authenticate({
-    ship,
-    url,
-    code,
-    verbose = false,
-  }: AuthenticationInterface) {
-    const airlock = new Urbit(
-      url.startsWith('http') ? url : `http://${url}`,
-      code
-    );
-    airlock.verbose = verbose;
-    airlock.ship = ship;
+  static async setupChannel({ url, code, ...params }: UrbitParams) {
+    const airlock = new Urbit({
+      url: url.startsWith('http') ? url : `http://${url}`,
+      code,
+      ...params,
+    });
+
+    // Learn where we are aka what ship we're connecting to
+    airlock.getShipName();
+
+    if (code) {
+      await airlock.authenticate();
+    }
+    // Learn who we are aka what patp
+    airlock.getOurName();
+
     await airlock.connect();
-    await airlock.eventSource();
     return airlock;
   }
 
@@ -219,7 +240,7 @@ export class Urbit {
       credentials: 'include',
     });
     const name = await nameResp.text();
-    this.ship = name.substring(1);
+    this.ship = name;
   }
 
   /**
@@ -236,17 +257,16 @@ export class Urbit {
       credentials: 'include',
     });
     const name = await nameResp.text();
-    this.our = name.substring(1);
+    this.our = name;
   }
 
   /**
    * Connects to the Urbit ship. Nothing can be done until this is called.
-   * That's why we roll it into this.authenticate
+   * That's why we roll it into this.setupChannel.
    * TODO  as of urbit/urbit#6561, this is no longer true, and we are able
    *       to interact with the ship using a guest identity.
    */
-  //TODO  rename to authenticate() and call connect() at the end
-  async connect(): Promise<void> {
+  async authenticate(): Promise<void> {
     if (this.verbose) {
       console.log(
         `password=${this.code} `,
@@ -259,7 +279,7 @@ export class Urbit {
       method: 'post',
       body: `password=${this.code}`,
       credentials: 'include',
-    }).then(async response => {
+    }).then(async (response) => {
       if (this.verbose) {
         console.log('Received authentication response', response);
       }
@@ -273,28 +293,14 @@ export class Urbit {
       if (!isBrowser) {
         this.cookie = cookie;
       }
-      this.getShipName();
-      this.getOurName();
     });
   }
 
   /**
    * Initializes the SSE pipe for the appropriate channel.
    */
-  //TODO  rename to connect() maybe, if we figure out the other ones lol
-  //TODO  follow this pseudocode structure, it's Correct™
-  // if (weAreConnected) {
-  //   return;
-  // }
-  // else {
-  //   // create the channel if we have never heard from it before
-  //   if (wasNeverOpen)  //  aka lastEventId === 0
-  //     await this.sendNounsToChannel();
-  //   // the channel has been (or already was) created, (re)connect to it
-  //   connectionLogicBelow(lastEventId);
-  // }
   //TODO  explicit success/failure return?
-  async eventSource(): Promise<void> {
+  async connect(): Promise<void> {
     if (this.sseClientInitialized) {
       return Promise.resolve();
     }
@@ -314,12 +320,9 @@ export class Urbit {
           if (this.verbose) {
             console.log('Opened eventsource', response);
           }
-          if (isReconnect) {
-            this.onReconnect && this.onReconnect();
-          }
           if (response.ok) {
             this.errorCount = 0;
-            this.onOpen && this.onOpen();
+            this.onOpen && this.onOpen(isReconnect);
             this.emit('status-update', {
               status: isReconnect ? 'reconnected' : 'active',
             });
@@ -362,20 +365,18 @@ export class Urbit {
           }
 
           // [request-id channel-event]
-          if ( data instanceof Cell &&
-               data.head instanceof Atom &&
-               data.tail instanceof Cell &&
-               data.tail.head instanceof Atom)
-          {
+          if (
+            data instanceof Cell &&
+            data.head instanceof Atom &&
+            data.tail instanceof Cell &&
+            data.tail.head instanceof Atom
+          ) {
             //NOTE  id could be string if id > 2^32, not expected in practice
             const id = data.head.valueOf() as number;
             const tag = Atom.cordToString(data.tail.head);
             const bod = data.tail.tail;
             // [%poke-ack p=(unit tang)]
-            if (
-              tag === 'poke-ack' &&
-              this.outstandingPokes.has(id)
-            ) {
+            if (tag === 'poke-ack' && this.outstandingPokes.has(id)) {
               const funcs = this.outstandingPokes.get(id);
               if (bod instanceof Atom) {
                 funcs.onSuccess();
@@ -385,7 +386,7 @@ export class Urbit {
                 funcs.onError(bod.tail);
               }
               this.outstandingPokes.delete(id);
-            // [%watch-ack p=(unit tang)]
+              // [%watch-ack p=(unit tang)]
             } else if (
               tag === 'watch-ack' &&
               this.outstandingSubscriptions.has(id)
@@ -397,7 +398,7 @@ export class Urbit {
                 funcs.err(id, bod.tail);
                 this.outstandingSubscriptions.delete(id);
               }
-            // [%fact =desk =mark =noun]
+              // [%fact =desk =mark =noun]
             } else if (
               tag === 'fact' &&
               this.outstandingSubscriptions.has(id)
@@ -411,7 +412,7 @@ export class Urbit {
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
-            // [%kick ~]
+              // [%kick ~]
             } else if (
               tag === 'kick' &&
               this.outstandingSubscriptions.has(id)
@@ -523,7 +524,7 @@ export class Urbit {
 
   //NOTE  every arg is interpreted (through nockjs.dwim) as a noun, which
   //      should result in a noun nesting inside of the xx $eyre-command type
-  private async sendNounsToChannel(...args: any[]): Promise<void> {
+  private async sendNounsToChannel(...args: (Noun | any)[]): Promise<void> {
     const response = await fetch(this.channelUrl, {
       ...this.fetchOptions('PUT'),
       method: 'PUT',
@@ -555,7 +556,7 @@ export class Urbit {
       };
       const event = (id: number, m: string, n: T) => {
         if (!done) {
-          resolve(n);  //TODO  revisit
+          resolve(n); //TODO  revisit
           this.unsubscribe(id);
         }
       };
@@ -599,8 +600,12 @@ export class Urbit {
     // [%poke request-id=@ud ship=@p app=term mark=@tas =noun]
     const non = ['poke', eventId, ship, app, mark, noun];
     this.outstandingPokes.set(eventId, {
-      onSuccess: () => { onSuccess(); },
-      onError: (err) => { onError(err); },
+      onSuccess: () => {
+        onSuccess();
+      },
+      onError: (err) => {
+        onError(err);
+      },
     });
     await this.sendNounsToChannel(non);
     return eventId;
@@ -663,9 +668,11 @@ export class Urbit {
    */
   async unsubscribe(subscription: number) {
     // [%unsubscribe request-id=@ud subscription-id=@ud]
-    return this.sendNounsToChannel(
-      ['unsubscribe', this.getEventId(), subscription]
-    ).then(() => {
+    return this.sendNounsToChannel([
+      'unsubscribe',
+      this.getEventId(),
+      subscription,
+    ]).then(() => {
       this.emit('subscription', {
         id: subscription,
         status: 'close',
@@ -717,10 +724,10 @@ export class Urbit {
    */
   async scry<T = any>(params: Scry): Promise<T> {
     const { app, path, mark } = params;
-    console.log('scry', params)
+    console.log('scry', params);
     const response = await fetch(
-      `${this.url}/~/scry/${app}${path}.${ mark || 'json' }`, //TODO jam by default
-      this.fetchOptions('GET')  //NOTE  mode doesn't matter, not opening channel
+      `${this.url}/~/scry/${app}${path}.${mark || 'json'}`, //TODO jam by default
+      this.fetchOptions('GET') //NOTE  mode doesn't matter, not opening channel
     );
 
     if (!response.ok) {
@@ -737,17 +744,12 @@ export class Urbit {
    * @param outputMark  The mark of the data being returned
    * @param threadName  The thread to run
    * @param body        The data to send to the thread
+   * @param desk        The desk to run the thread from
    * @returns  The return value of the thread
    */
   //TODO  noun-ify once spider is compatible
   async thread<R, T = any>(params: Thread<T>): Promise<R> {
-    const {
-      inputMark,
-      outputMark,
-      threadName,
-      body,
-      desk = this.desk,
-    } = params;
+    const { inputMark, outputMark, threadName, body, desk } = params;
     if (!desk) {
       throw new Error('Must supply desk to run thread from');
     }
@@ -761,17 +763,6 @@ export class Urbit {
     );
 
     return res.json();
-  }
-
-  /**
-   * Utility function to connect to a ship that has its *.arvo.network domain configured.
-   *
-   * @param name Name of the ship e.g. zod
-   * @param code Code to log in
-   */
-  static async onArvoNetwork(ship: string, code: string): Promise<Urbit> {
-    const url = `https://${ship}.arvo.network`;
-    return await Urbit.authenticate({ ship, url, code });
   }
 }
 
