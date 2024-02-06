@@ -200,4 +200,25 @@ describe('subscription', () => {
     await wait(300);
     expect(params.onError).toHaveBeenCalled();
   }, 800);
+
+  //TODO  test this in the browser, manually, just once,
+  //      to make sure the byte ordering detail is correct
+  it('should scry for Noun objects', async () => {
+    airlock = newUrbit();
+    fetchSpy = jest.spyOn(window, 'fetch');
+    const testNoun = dwim([123, 456], 'some big noun', 'with many atoms', 'inside');
+    fetchSpy.mockImplementationOnce(() => {
+      return Promise.resolve({
+        ok: true,
+        arrayBuffer: () => {
+          return Promise.resolve(new Uint8Array(jam(testNoun).bytes()))
+        },
+      })
+    });
+    const res = await airlock.scry({ app: 'agent', path: '/whatever' });
+    if (!(res instanceof Atom) && !(res instanceof Cell)) {
+      expect(false); //TODO  force failure properly
+    }
+    expect(res).toEqual(testNoun);
+  });
 });

@@ -725,11 +725,10 @@ export class Urbit {
    * @param params The scry request
    * @returns The scry result
    */
-  async scry<T = any>(params: Scry): Promise<T> {
+  async scry(params: Scry): Promise<Noun | ReadableStream<Uint8Array>> {
     const { app, path, mark } = params;
-    console.log('scry', params);
     const response = await fetch(
-      `${this.url}/~/scry/${app}${path}.${mark || 'json'}`, //TODO jam by default
+      `${this.url}/~/scry/${app}${path}.${mark || 'noun'}`,
       this.fetchOptions('GET') //NOTE  mode doesn't matter, not opening channel
     );
 
@@ -737,7 +736,16 @@ export class Urbit {
       return Promise.reject(response);
     }
 
-    return await response.json();
+    if ((mark || 'noun') !== 'noun') {
+      return response.body;
+    }
+
+    // extract the atom (jam buffer) from the response's bytes and cue it
+    const hex = [...new Uint8Array(await response.arrayBuffer())]
+                .reverse()  //  jammed bytestream is reverse endian
+                .map(x => x.toString(16).padStart(2, '0'))
+                .join('');
+    return cue(Atom.fromString(hex, 16));
   }
 
   /**
