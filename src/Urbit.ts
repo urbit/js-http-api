@@ -16,7 +16,7 @@ import {
 } from './types';
 import EventEmitter, { hexString } from './utils';
 
-import { Atom, Cell, dejs, jam, cue, Noun } from '@urbit/nockjs';
+import { Noun, Atom, Cell, dejs, jam, cue } from '@urbit/nockjs';
 import { parseUw, formatUw, patp2dec } from '@urbit/aura';
 
 /**
@@ -359,7 +359,7 @@ export class Urbit {
             this.ack(eventId);
           }
 
-          let data: any;
+          let data: Noun;
           if (event.data) {
             data = cue(Atom.fromString(parseUw(event.data).toString()));
           }
@@ -386,7 +386,7 @@ export class Urbit {
                 funcs.onError(bod.tail);
               }
               this.outstandingPokes.delete(id);
-              // [%watch-ack p=(unit tang)]
+            // [%watch-ack p=(unit tang)]
             } else if (
               tag === 'watch-ack' &&
               this.outstandingSubscriptions.has(id)
@@ -398,7 +398,7 @@ export class Urbit {
                 funcs.err(id, bod.tail);
                 this.outstandingSubscriptions.delete(id);
               }
-              // [%fact =desk =mark =noun]
+            // [%fact =desk =mark =noun]
             } else if (
               tag === 'fact' &&
               this.outstandingSubscriptions.has(id)
@@ -406,13 +406,18 @@ export class Urbit {
               const funcs = this.outstandingSubscriptions.get(id);
               try {
                 //TODO  support binding conversion callback?
+                if (!( (bod instanceof Cell) &&
+                       (bod.tail instanceof Cell) &&
+                       (bod.tail.head instanceof Atom) )) {
+                  throw 'malformed %fact';
+                }
                 const mark = Atom.cordToString(bod.tail.head);
                 //NOTE  we don't pass the desk. it's a leak-y eyre impl detail
                 funcs.event(id, mark, bod.tail.tail);
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
-              // [%kick ~]
+            // [%kick ~]
             } else if (
               tag === 'kick' &&
               this.outstandingSubscriptions.has(id)
@@ -496,7 +501,7 @@ export class Urbit {
     this.outstandingSubscriptions = new Map();
 
     this.outstandingPokes.forEach((poke, id) => {
-      poke.onError('Channel was reaped');
+      poke.onError(Atom.fromString('Channel was reaped'));
     });
     this.outstandingPokes = new Map();
   }
@@ -544,9 +549,8 @@ export class Urbit {
    *
    * @returns The first fact on the subcription
    */
-  //TODO  T is always Noun now, so don't strictly need to parameterize
-  async subscribeOnce<T = any>(app: string, path: NounPath, timeout?: number) {
-    return new Promise<T>(async (resolve, reject) => {
+  async subscribeOnce(app: string, path: NounPath, timeout?: number) {
+    return new Promise(async (resolve, reject) => {
       let done = false;
       let id: number | null = null;
       const quit = () => {
@@ -554,7 +558,7 @@ export class Urbit {
           reject('quit');
         }
       };
-      const event = (id: number, m: string, n: T) => {
+      const event = (id: number, m: string, n: Noun) => {
         if (!done) {
           resolve(n); //TODO  revisit
           this.unsubscribe(id);
@@ -583,7 +587,7 @@ export class Urbit {
    * @param mark The mark of the data being sent
    * @param noun The data to send
    */
-  async poke<T>(params: PokeInterface<T>): Promise<number> {
+  async poke(params: PokeInterface): Promise<number> {
     const { app, mark, noun, shipName, onSuccess, onError } = {
       onSuccess: () => {},
       onError: () => {},

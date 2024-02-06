@@ -1,3 +1,5 @@
+import { Noun } from '@urbit/nockjs';
+
 /**
  * The configuration for connecting to an Urbit ship.
  */
@@ -86,10 +88,8 @@ export type GallAgent = string;
 
 /**
  * Description of an outgoing poke
- *
- * @typeParam Action - Typescript type of the data being poked
  */
-export interface Poke<Action> {
+export interface Poke {
   /**
    * Ship to poke. If left empty, the api lib will populate it with the ship that it is connected to.
    *
@@ -109,7 +109,7 @@ export interface Poke<Action> {
   /**
    * Noun to poke with
    */
-  noun: any; //TODO  revisit
+  noun: Noun;
 }
 
 /**
@@ -160,10 +160,10 @@ export type Action = 'poke' | 'subscribe' | 'ack' | 'unsubscribe' | 'delete';
 
 export interface PokeHandlers {
   onSuccess?: () => void;
-  onError?: (e: any) => void;
+  onError?: (e: Noun) => void;  //  given a $tang
 }
 
-export type PokeInterface<T> = PokeHandlers & Poke<T>;
+export type PokeInterface = PokeHandlers & Poke;
 
 /**
  * Subscription event handlers
@@ -174,12 +174,12 @@ export interface SubscriptionInterface {
    * Handle negative %watch-ack
    */
   //TODO  id here is a string, but is number in most other places...
-  err?(id: number, error: any): void;
+  //NOTE  error is a $tang
+  err?(id: number, error: Noun): void;
   /**
    * Handle %fact
    */
-  //TODO  give data Noun type?
-  event?(id: number, mark: string, data: any): void;
+  event?(id: number, mark: string, data: Noun): void;
   /**
    * Handle %kick
    */
@@ -207,24 +207,6 @@ export interface headers {
   Cookie?: string;
   [headerName: string]: string;
 }
-
-export interface CustomEventHandler {
-  (data: any, response: string): void;
-}
-
-export interface SSEOptions {
-  headers?: {
-    Cookie?: string;
-  };
-  withCredentials?: boolean;
-}
-
-export interface Message extends Record<string, any> {
-  action: Action;
-  id?: number;
-}
-
-export class ResumableError extends Error {}
 
 export class FatalError extends Error {}
 
