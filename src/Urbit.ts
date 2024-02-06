@@ -364,6 +364,7 @@ export class Urbit {
 
           let data: Noun;
           if (event.data) {
+            //TODO  use the same bignum type everywhere
             data = cue(Atom.fromString(parseUw(event.data).toString()));
           }
 
@@ -562,7 +563,7 @@ export class Urbit {
       };
       const event = (id: number, m: string, n: Noun) => {
         if (!done) {
-          resolve(n); //TODO  revisit
+          resolve(n);
           this.unsubscribe(id);
         }
       };
