@@ -283,7 +283,7 @@ export class Urbit {
       if (this.verbose) {
         console.log('Received authentication response', response);
       }
-      if (response.status >= 200 && response.status < 300) {
+      if (response.status < 200 && response.status >= 300) {
         throw new Error('Login failed with status ' + response.status);
       }
       const cookie = response.headers.get('set-cookie');
