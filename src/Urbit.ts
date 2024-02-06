@@ -690,20 +690,17 @@ export class Urbit {
   /**
    * Deletes the connection to a channel.
    */
-  //TODO  noun-ify
   async delete() {
-    const body = JSON.stringify([
-      {
-        id: this.getEventId(),
-        action: 'delete',
-      },
-    ]);
+    //NOTE  we do this inline, instead of calling sendNounsToChannel,
+    //      because navigator.sendBeacon is more reliable in a "user just
+    //      closed the tab" scenario
+    const body = formatUw(jam(dejs.list([['delete', 0]])).number.toString());
     if (isBrowser) {
       navigator.sendBeacon(this.channelUrl, body);
     } else {
       const response = await fetch(this.channelUrl, {
-        ...this.fetchOptions('PUT', 'json'),
-        method: 'POST',
+        ...this.fetchOptions('PUT'),
+        method: 'PUT',
         body: body,
       });
       if (!response.ok) {
