@@ -19,6 +19,11 @@ import EventEmitter, { hexString } from './utils';
 import { Noun, Atom, Cell, dejs, jam, cue } from '@urbit/nockjs';
 import { parseUw, formatUw, patp2dec } from '@urbit/aura';
 
+//TODO  dan needed changes to the fetch stuff for react native,
+//      native fetch (polyfill?) does xhr instead?
+//  https://github.com/facebook/react-native/issues/27741#issuecomment-1802548394
+//  https://github.com/react-native-community/fetch
+
 /**
  * A class for interacting with an urbit ship, given its URL and code
  */
@@ -311,8 +316,6 @@ export class Urbit {
     this.sseClientInitialized = true;
     return new Promise((resolve, reject) => {
       fetchEventSource(this.channelUrl, {
-        //TODO  manually inject headers = { 'last-event-id': lastHeardEventId }
-        //      if needed
         ...this.fetchOptions('GET'),
         openWhenHidden: true,
         responseTimeout: 25000,
@@ -405,7 +408,6 @@ export class Urbit {
             ) {
               const funcs = this.outstandingSubscriptions.get(id);
               try {
-                //TODO  support binding conversion callback?
                 if (!( (bod instanceof Cell) &&
                        (bod.tail instanceof Cell) &&
                        (bod.tail.head instanceof Atom) )) {
