@@ -144,9 +144,8 @@ export class Urbit {
 
   private fetchOptions(
     method: 'PUT' | 'GET' = 'PUT',
-    mode: 'jam' | 'json' = 'jam'
   ): any {
-    const type = mode === 'jam' ? 'application/x-urb-jam' : 'application/json';
+    const type = 'application/x-urb-jam';
     let headers: headers = {};
     switch (method) {
       case 'PUT':
@@ -738,7 +737,7 @@ export class Urbit {
     const { app, path, mark } = params;
     const response = await this.fetch(
       `${this.url}/~/scry/${app}${path}.${mark || 'noun'}`,
-      this.fetchOptions('GET') //NOTE  mode doesn't matter, not opening channel
+      this.fetchOptions('GET')
     );
 
     if (!response.ok) {
