@@ -82,6 +82,7 @@ describe('Initialisation', () => {
   let airlock: Urbit;
   let fetchSpy: ReturnType<typeof jest.spyOn>;
   beforeEach(() => {
+    fetchSpy = jest.spyOn(window, 'fetch');
     airlock = newUrbit();
   });
   afterEach(() => {
@@ -89,7 +90,6 @@ describe('Initialisation', () => {
   });
   it('should poke & connect upon a 200', async () => {
     airlock.onOpen = jest.fn();
-    fetchSpy = jest.spyOn(window, 'fetch');
     fetchSpy
       .mockImplementationOnce(() =>
         Promise.resolve({ ok: true, body: null } as Response)
@@ -102,7 +102,6 @@ describe('Initialisation', () => {
     expect(airlock.onOpen).toHaveBeenCalled();
   }, 500);
   it('should handle failures', async () => {
-    fetchSpy = jest.spyOn(window, 'fetch');
     airlock.onRetry = jest.fn();
     airlock.onOpen = jest.fn();
     fetchSpy
@@ -128,13 +127,13 @@ describe('subscription', () => {
   let fetchSpy: jest.SpyInstance;
   beforeEach(() => {
     eventId = 1;
+    fetchSpy = jest.spyOn(window, 'fetch');
   });
   afterEach(() => {
     fetchSpy.mockReset();
   });
 
   it('should subscribe', async () => {
-    fetchSpy = jest.spyOn(window, 'fetch');
     airlock = newUrbit();
     airlock.onOpen = jest.fn();
     const params = {
@@ -161,7 +160,6 @@ describe('subscription', () => {
     expect(params.event).toHaveBeenNthCalledWith(2, 1, 'mark', secondEv);
   }, 800);
   it('should handle poke acks', async () => {
-    fetchSpy = jest.spyOn(window, 'fetch');
     airlock = newUrbit();
     airlock.onOpen = jest.fn();
     fetchSpy.mockImplementation(fakeFetch(() => fakeSSE([ack(1)])));
@@ -206,14 +204,19 @@ describe('subscription', () => {
   it('should scry for Noun objects', async () => {
     airlock = newUrbit();
     fetchSpy = jest.spyOn(window, 'fetch');
-    const testNoun = dwim([123, 456], 'some big noun', 'with many atoms', 'inside');
+    const testNoun = dwim(
+      [123, 456],
+      'some big noun',
+      'with many atoms',
+      'inside'
+    );
     fetchSpy.mockImplementationOnce(() => {
       return Promise.resolve({
         ok: true,
         arrayBuffer: () => {
-          return Promise.resolve(new Uint8Array(jam(testNoun).bytes()))
+          return Promise.resolve(new Uint8Array(jam(testNoun).bytes()));
         },
-      })
+      });
     });
     const res = await airlock.scry({ app: 'agent', path: '/whatever' });
     if (!(res instanceof Atom) && !(res instanceof Cell)) {

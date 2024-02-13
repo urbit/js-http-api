@@ -18,6 +18,11 @@ export interface UrbitParams {
    */
   verbose?: boolean;
   /**
+   * The fetch function to use. Defaults to window.fetch. Typically used
+   * to pass in locally supported fetch implementation.
+   */
+  fetch?: typeof fetch;
+  /**
    * Called when the connection is established. Probably don't use this
    * as a trigger for refetching data.
    *
@@ -160,7 +165,7 @@ export type Action = 'poke' | 'subscribe' | 'ack' | 'unsubscribe' | 'delete';
 
 export interface PokeHandlers {
   onSuccess?: () => void;
-  onError?: (e: Noun) => void;  //  given a $tang
+  onError?: (e: Noun) => void; //  given a $tang
 }
 
 export type PokeInterface = PokeHandlers & Poke;

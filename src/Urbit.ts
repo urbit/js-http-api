@@ -111,6 +111,12 @@ export class Urbit {
   verbose?: boolean;
 
   /**
+   * The fetch function to use. Defaults to window.fetch. Typically used
+   * to pass in locally supported fetch implementation.
+   */
+  fetch: typeof fetch;
+
+  /**
    * number of consecutive errors in connecting to the eventsource
    */
   private errorCount = 0;
@@ -169,6 +175,7 @@ export class Urbit {
     this.url = params.url;
     this.code = params.code;
     this.verbose = params.verbose || false;
+    this.fetch = params.fetch || fetch;
     this.onError = params.onError;
     this.onRetry = params.onRetry;
     this.onOpen = params.onOpen;
@@ -240,7 +247,7 @@ export class Urbit {
       return Promise.resolve();
     }
 
-    const nameResp = await fetch(`${this.url}/~/host`, {
+    const nameResp = await this.fetch(`${this.url}/~/host`, {
       method: 'get',
       credentials: 'include',
     });
@@ -257,7 +264,7 @@ export class Urbit {
       return Promise.resolve();
     }
 
-    const nameResp = await fetch(`${this.url}/~/name`, {
+    const nameResp = await this.fetch(`${this.url}/~/name`, {
       method: 'get',
       credentials: 'include',
     });
@@ -268,8 +275,6 @@ export class Urbit {
   /**
    * Connects to the Urbit ship. Nothing can be done until this is called.
    * That's why we roll it into this.setupChannel.
-   * TODO  as of urbit/urbit#6561, this is no longer true, and we are able
-   *       to interact with the ship using a guest identity.
    */
   async authenticate(): Promise<void> {
     if (this.verbose) {
@@ -280,7 +285,7 @@ export class Urbit {
           : 'Connecting from node context'
       );
     }
-    return fetch(`${this.url}/~/login`, {
+    return this.fetch(`${this.url}/~/login`, {
       method: 'post',
       body: `password=${this.code}`,
       credentials: 'include',
@@ -304,7 +309,6 @@ export class Urbit {
   /**
    * Initializes the SSE pipe for the appropriate channel.
    */
-  //TODO  explicit success/failure return?
   async connect(): Promise<void> {
     if (this.sseClientInitialized) {
       return Promise.resolve();
@@ -317,6 +321,7 @@ export class Urbit {
     return new Promise((resolve, reject) => {
       fetchEventSource(this.channelUrl, {
         ...this.fetchOptions('GET'),
+        fetch: this.fetch,
         openWhenHidden: true,
         responseTimeout: 25000,
         onopen: async (response, isReconnect) => {
@@ -329,8 +334,7 @@ export class Urbit {
             this.emit('status-update', {
               status: isReconnect ? 'reconnected' : 'active',
             });
-            resolve();
-            return; // everything's good
+            resolve(); // everything's good
           } else {
             const err = new Error('failed to open eventsource');
             reject(err);
@@ -385,33 +389,37 @@ export class Urbit {
               if (bod instanceof Atom) {
                 funcs.onSuccess();
               } else {
-                //TODO  pre-render tang?
+                //TODO  pre-render tang after porting tang utils
                 console.error(bod.tail);
                 funcs.onError(bod.tail);
               }
               this.outstandingPokes.delete(id);
-            // [%watch-ack p=(unit tang)]
+              // [%watch-ack p=(unit tang)]
             } else if (
               tag === 'watch-ack' &&
               this.outstandingSubscriptions.has(id)
             ) {
               const funcs = this.outstandingSubscriptions.get(id);
               if (bod instanceof Cell) {
-                //TODO  pre-render tang?
+                //TODO  pre-render tang after porting tang utils
                 console.error(bod.tail);
                 funcs.err(id, bod.tail);
                 this.outstandingSubscriptions.delete(id);
               }
-            // [%fact =desk =mark =noun]
+              // [%fact =desk =mark =noun]
             } else if (
               tag === 'fact' &&
               this.outstandingSubscriptions.has(id)
             ) {
               const funcs = this.outstandingSubscriptions.get(id);
               try {
-                if (!( (bod instanceof Cell) &&
-                       (bod.tail instanceof Cell) &&
-                       (bod.tail.head instanceof Atom) )) {
+                if (
+                  !(
+                    bod instanceof Cell &&
+                    bod.tail instanceof Cell &&
+                    bod.tail.head instanceof Atom
+                  )
+                ) {
                   throw 'malformed %fact';
                 }
                 const mark = Atom.cordToString(bod.tail.head);
@@ -420,7 +428,7 @@ export class Urbit {
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
-            // [%kick ~]
+              // [%kick ~]
             } else if (
               tag === 'kick' &&
               this.outstandingSubscriptions.has(id)
@@ -533,7 +541,7 @@ export class Urbit {
   //NOTE  every arg is interpreted (through nockjs.dwim) as a noun, which
   //      should result in a noun nesting inside of the xx $eyre-command type
   private async sendNounsToChannel(...args: (Noun | any)[]): Promise<void> {
-    const response = await fetch(this.channelUrl, {
+    const response = await this.fetch(this.channelUrl, {
       ...this.fetchOptions('PUT'),
       method: 'PUT',
       body: formatUw(jam(dejs.list(args)).number.toString()),
@@ -699,7 +707,7 @@ export class Urbit {
     if (isBrowser) {
       navigator.sendBeacon(this.channelUrl, body);
     } else {
-      const response = await fetch(this.channelUrl, {
+      const response = await this.fetch(this.channelUrl, {
         ...this.fetchOptions('PUT'),
         method: 'PUT',
         body: body,
@@ -728,7 +736,7 @@ export class Urbit {
    */
   async scry(params: Scry): Promise<Noun | ReadableStream<Uint8Array>> {
     const { app, path, mark } = params;
-    const response = await fetch(
+    const response = await this.fetch(
       `${this.url}/~/scry/${app}${path}.${mark || 'noun'}`,
       this.fetchOptions('GET') //NOTE  mode doesn't matter, not opening channel
     );
@@ -743,9 +751,9 @@ export class Urbit {
 
     // extract the atom (jam buffer) from the response's bytes and cue it
     const hex = [...new Uint8Array(await response.arrayBuffer())]
-                .reverse()  //  jammed bytestream is reverse endian
-                .map(x => x.toString(16).padStart(2, '0'))
-                .join('');
+      .reverse() //  jammed bytestream is reverse endian
+      .map((x) => x.toString(16).padStart(2, '0'))
+      .join('');
     return cue(Atom.fromString(hex, 16));
   }
 
@@ -765,7 +773,7 @@ export class Urbit {
     if (!desk) {
       throw new Error('Must supply desk to run thread from');
     }
-    const res = await fetch(
+    const res = await this.fetch(
       `${this.url}/spider/${desk}/${inputMark}/${threadName}/${outputMark}.json`,
       {
         ...this.fetchOptions('PUT', 'json'),
