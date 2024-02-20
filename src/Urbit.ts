@@ -116,6 +116,8 @@ export class Urbit {
    */
   fetch: typeof fetch;
 
+  public ready: Promise<void> = Promise.resolve();
+
   /**
    * number of consecutive errors in connecting to the eventsource
    */
@@ -175,7 +177,7 @@ export class Urbit {
     this.url = params.url;
     this.code = params.code;
     this.verbose = params.verbose || false;
-    this.fetch = params.fetch || fetch;
+    this.fetch = params.fetch || ((...args) => fetch(...args));
     this.onError = params.onError;
     this.onRetry = params.onRetry;
     this.onOpen = params.onOpen;
@@ -192,23 +194,28 @@ export class Urbit {
    * Given a ship, url, and code, this returns an airlock connection
    * that is ready to go. It creates a channel and connects to it.
    */
-  static async setupChannel({ url, code, ...params }: UrbitParams) {
+  static setupChannel({ url, code, ...params }: UrbitParams) {
     const airlock = new Urbit({
-      url: url.startsWith('http') ? url : `http://${url}`,
+      url,
       code,
       ...params,
     });
 
-    // Learn where we are aka what ship we're connecting to
-    airlock.getShipName();
+    airlock.ready = new Promise(async (resolve) => {
+      // Learn where we are aka what ship we're connecting to
+      await airlock.getShipName();
 
-    if (code) {
-      await airlock.authenticate();
-    }
-    // Learn who we are aka what patp
-    airlock.getOurName();
+      if (code) {
+        await airlock.authenticate();
+      }
+      // Learn who we are aka what patp
+      await airlock.getOurName();
 
-    await airlock.connect();
+      await airlock.connect();
+
+      resolve();
+    });
+
     return airlock;
   }
 
@@ -380,7 +387,7 @@ export class Urbit {
             data.tail.head instanceof Atom
           ) {
             //NOTE  id could be string if id > 2^32, not expected in practice
-            const id = data.head.valueOf() as number;
+            const id = Number(data.head.number);
             const tag = Atom.cordToString(data.tail.head);
             const bod = data.tail.tail;
             // [%poke-ack p=(unit tang)]
@@ -561,6 +568,7 @@ export class Urbit {
    * @returns The first fact on the subcription
    */
   async subscribeOnce(app: string, path: NounPath, timeout?: number) {
+    await this.ready;
     return new Promise(async (resolve, reject) => {
       let done = false;
       let id: number | null = null;
@@ -599,6 +607,7 @@ export class Urbit {
    * @param noun The data to send
    */
   async poke(params: PokeInterface): Promise<number> {
+    await this.ready;
     const { app, mark, noun, shipName, onSuccess, onError } = {
       onSuccess: () => {},
       onError: () => {},
@@ -635,6 +644,7 @@ export class Urbit {
    * @param handlers Handlers to deal with various events of the subscription
    */
   async subscribe(params: SubscriptionRequestInterface): Promise<number> {
+    await this.ready;
     const { app, path, ship, err, event, quit } = {
       err: () => {},
       event: () => {},
@@ -682,6 +692,7 @@ export class Urbit {
    * @param subscription
    */
   async unsubscribe(subscription: number) {
+    await this.ready;
     // [%unsubscribe request-id=@ud subscription-id=@ud]
     return this.sendNounsToChannel([
       'unsubscribe',
@@ -735,6 +746,7 @@ export class Urbit {
    * @returns The scry result
    */
   async scry(params: Scry): Promise<Noun | ReadableStream<Uint8Array>> {
+    await this.ready;
     const { app, path, mark } = params;
     const response = await this.fetch(
       `${this.url}/~/scry/${app}${path}.${mark || 'noun'}`,
@@ -769,6 +781,7 @@ export class Urbit {
    */
   //TODO  noun-ify once spider is compatible
   async thread<R, T = any>(params: Thread<T>): Promise<R> {
+    await this.ready;
     const { inputMark, outputMark, threadName, body, desk } = params;
     if (!desk) {
       throw new Error('Must supply desk to run thread from');
