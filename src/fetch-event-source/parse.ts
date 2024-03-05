@@ -41,7 +41,11 @@ export async function getBytes(
       }),
     ]);
 
-    onChunk(result.value);
+    try {
+      onChunk(result.value);
+    } catch (err) {
+      console.error('Error processing chunk:', err);
+    }
   }
 }
 
@@ -65,6 +69,7 @@ export function getLines(
   let position: number; // current read position
   let fieldLength: number; // length of the `field` portion of the line
   let discardTrailingNewline = false;
+  let lineStart = 0; // index where the current line starts
 
   // return a function that can process each incoming byte chunk:
   return function onChunk(arr: Uint8Array) {
@@ -78,7 +83,6 @@ export function getLines(
     }
 
     const bufLength = buffer.length;
-    let lineStart = 0; // index where the current line starts
     while (position < bufLength) {
       if (discardTrailingNewline) {
         if (buffer[position] === ControlChars.NewLine) {
@@ -114,6 +118,14 @@ export function getLines(
       }
 
       // we've reached the line end, send it out:
+      console.log('processing line', {
+        position,
+        lineStart,
+        lineEnd,
+        fieldLength,
+        bufLength,
+        line: new TextDecoder().decode(buffer.subarray(lineStart, lineEnd)),
+      });
       onLine(buffer.subarray(lineStart, lineEnd), fieldLength);
       lineStart = position; // we're now on the next line
       fieldLength = -1;
@@ -121,12 +133,23 @@ export function getLines(
 
     if (lineStart === bufLength) {
       buffer = undefined; // we've finished reading it
+      lineStart = 0;
     } else if (lineStart !== 0) {
       // Create a new view into buffer beginning at lineStart so we don't
       // need to copy over the previous lines when we get the new arr:
       buffer = buffer.subarray(lineStart);
       position -= lineStart;
+      lineStart = 0;
     }
+
+    console.log(
+      'position:',
+      position,
+      'lineStart:',
+      lineStart,
+      'buffer:',
+      buffer
+    );
   };
 }
 
@@ -155,11 +178,12 @@ export function getMessages(
       // exclude comments and lines with no values
       // line is of format "<field>:<value>" or "<field>: <value>"
       // https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation
-      const field = decoder.decode(line.subarray(0, fieldLength));
+      const field = decoder.decode(line.subarray(0, fieldLength)).trim();
       const valueOffset =
         fieldLength + (line[fieldLength + 1] === ControlChars.Space ? 2 : 1);
       const value = decoder.decode(line.subarray(valueOffset));
 
+      console.log('field:', field, 'value:', value);
       switch (field) {
         case 'data':
           // if this message already has data, append the new value to the old.
@@ -170,6 +194,7 @@ export function getMessages(
           message.event = value;
           break;
         case 'id':
+          message = newMessage();
           onId?.((message.id = value));
           break;
         case 'retry':
