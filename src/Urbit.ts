@@ -144,9 +144,7 @@ export class Urbit {
     return `${this.url}/~/channel/${this.uid}`;
   }
 
-  private fetchOptions(
-    method: 'PUT' | 'GET' = 'PUT',
-  ): any {
+  private fetchOptions(method: 'PUT' | 'GET' = 'PUT'): any {
     const type = 'application/x-urb-jam';
     let headers: headers = {};
     switch (method) {
@@ -352,7 +350,7 @@ export class Urbit {
           }
           if (!event.id) return;
           const eventId = parseInt(event.id, 10);
-          this.emit('fact', {
+          this.emit('event', {
             id: eventId,
             data: event.data,
             time: Date.now(),
@@ -788,7 +786,7 @@ export class Urbit {
     const res = await this.fetch(
       `${this.url}/spider/${desk}/${inputMark}/${threadName}/${outputMark}.json`,
       {
-        ...this.fetchOptions('PUT', 'json'),
+        ...this.fetchOptions('PUT'),
         method: 'POST',
         body: JSON.stringify(body),
       }

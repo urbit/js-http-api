@@ -10,7 +10,7 @@ export interface StatusUpdateEvent {
   status: ChannelStatus;
 }
 
-export interface FactEvent {
+export interface EyreEvent {
   id: number;
   time: number;
   data: any;
@@ -46,7 +46,7 @@ export type UrbitHttpApiEvent = {
   subscription: SubscriptionEvent;
   'status-update': StatusUpdateEvent;
   'id-update': IdUpdateEvent;
-  fact: FactEvent;
+  event: EyreEvent;
   error: ErrorEvent;
   reset: ResetEvent;
   'seamless-reset': ResetEvent;
@@ -57,7 +57,7 @@ export type UrbitHttpApiEventType =
   | 'subscription'
   | 'status-update'
   | 'id-update'
-  | 'fact'
+  | 'event'
   | 'error'
   | 'reset'
   | 'seamless-reset'
