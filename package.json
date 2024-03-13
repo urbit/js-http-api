@@ -1,6 +1,6 @@
 {
   "name": "@urbit/http-api",
-  "version": "3.0.0",
+  "version": "3.1.0-dev",
   "license": "MIT",
   "description": "Library to interact with an Urbit ship over HTTP",
   "repository": "github:urbit/js-http-api",

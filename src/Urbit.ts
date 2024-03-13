@@ -134,7 +134,12 @@ export class Urbit {
    * be the empty string.
    * @param code The access code for the ship at that address
    */
-  constructor(public url: string, public code?: string, public desk?: string) {
+  constructor(
+    public url: string,
+    public code?: string,
+    public desk?: string,
+    public fetchFn: typeof fetch = fetch
+  ) {
     if (isBrowser) {
       window.addEventListener('beforeunload', this.delete);
     }
@@ -209,7 +214,7 @@ export class Urbit {
       return Promise.resolve();
     }
 
-    const nameResp = await fetch(`${this.url}/~/host`, {
+    const nameResp = await this.fetchFn(`${this.url}/~/host`, {
       method: 'get',
       credentials: 'include',
     });
@@ -226,7 +231,7 @@ export class Urbit {
       return Promise.resolve();
     }
 
-    const nameResp = await fetch(`${this.url}/~/name`, {
+    const nameResp = await this.fetchFn(`${this.url}/~/name`, {
       method: 'get',
       credentials: 'include',
     });
@@ -250,11 +255,11 @@ export class Urbit {
           : 'Connecting from node context'
       );
     }
-    return fetch(`${this.url}/~/login`, {
+    return this.fetchFn(`${this.url}/~/login`, {
       method: 'post',
       body: `password=${this.code}`,
       credentials: 'include',
-    }).then(async response => {
+    }).then(async (response) => {
       if (this.verbose) {
         console.log('Received authentication response', response);
       }
@@ -305,6 +310,7 @@ export class Urbit {
         ...this.fetchOptions,
         openWhenHidden: true,
         responseTimeout: 25000,
+        fetch: this.fetchFn,
         onopen: async (response, isReconnect) => {
           if (this.verbose) {
             console.log('Opened eventsource', response);
@@ -505,7 +511,7 @@ export class Urbit {
   }
 
   private async sendJSONtoChannel(...json: Message[]): Promise<void> {
-    const response = await fetch(this.channelUrl, {
+    const response = await this.fetchFn(this.channelUrl, {
       ...this.fetchOptions,
       method: 'PUT',
       body: JSON.stringify(json),
@@ -589,8 +595,12 @@ export class Urbit {
       json,
     };
     this.outstandingPokes.set(message.id, {
-      onSuccess: () => { onSuccess(); },
-      onError: (err) => { onError(err); },
+      onSuccess: () => {
+        onSuccess();
+      },
+      onError: (err) => {
+        onError(err);
+      },
     });
     await this.sendJSONtoChannel(message);
     return message.id;
@@ -677,7 +687,7 @@ export class Urbit {
     if (isBrowser) {
       navigator.sendBeacon(this.channelUrl, body);
     } else {
-      const response = await fetch(this.channelUrl, {
+      const response = await this.fetchFn(this.channelUrl, {
         ...this.fetchOptions,
         method: 'POST',
         body: body,
@@ -706,7 +716,7 @@ export class Urbit {
    */
   async scry<T = any>(params: Scry): Promise<T> {
     const { app, path } = params;
-    const response = await fetch(
+    const response = await this.fetchFn(
       `${this.url}/~/scry/${app}${path}.json`,
       this.fetchOptions
     );
@@ -739,7 +749,7 @@ export class Urbit {
     if (!desk) {
       throw new Error('Must supply desk to run thread from');
     }
-    const res = await fetch(
+    const res = await this.fetchFn(
       `${this.url}/spider/${desk}/${inputMark}/${threadName}/${outputMark}.json`,
       {
         ...this.fetchOptions,
