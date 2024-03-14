@@ -138,7 +138,10 @@ export class Urbit {
     public url: string,
     public code?: string,
     public desk?: string,
-    public fetchFn: typeof fetch = fetch
+    // The indirection here is necessary as browser fetch requires that it be
+    // executed with a `this` value of `window`.
+    // See: https://stackoverflow.com/questions/69876859/why-does-bind-fix-failed-to-execute-fetch-on-window-illegal-invocation-err
+    public fetchFn: typeof fetch = (...args) => fetch(...args)
   ) {
     if (isBrowser) {
       window.addEventListener('beforeunload', this.delete);
