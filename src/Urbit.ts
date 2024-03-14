@@ -98,6 +98,11 @@ export class Urbit {
    */
   private errorCount = 0;
 
+  /**
+   * Custom fetch implementation to use.
+   */
+  fetchFn: typeof fetch = (...args) => fetch(...args);
+
   onError?: (error: any) => void = null;
 
   onRetry?: () => void = null;
@@ -138,13 +143,13 @@ export class Urbit {
     public url: string,
     public code?: string,
     public desk?: string,
-    // The indirection here is necessary as browser fetch requires that it be
-    // executed with a `this` value of `window`.
-    // See: https://stackoverflow.com/questions/69876859/why-does-bind-fix-failed-to-execute-fetch-on-window-illegal-invocation-err
-    public fetchFn: typeof fetch = (...args) => fetch(...args)
+    fetchFn?: typeof fetch
   ) {
     if (isBrowser) {
       window.addEventListener('beforeunload', this.delete);
+    }
+    if (fetchFn) {
+      this.fetchFn = fetchFn;
     }
     return this;
   }
