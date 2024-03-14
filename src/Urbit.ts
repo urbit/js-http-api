@@ -98,6 +98,11 @@ export class Urbit {
    */
   private errorCount = 0;
 
+  /**
+   * Custom fetch implementation to use.
+   */
+  fetchFn: typeof fetch = (...args) => fetch(...args);
+
   onError?: (error: any) => void = null;
 
   onRetry?: () => void = null;
@@ -138,10 +143,13 @@ export class Urbit {
     public url: string,
     public code?: string,
     public desk?: string,
-    public fetchFn: typeof fetch = fetch
+    fetchFn?: typeof fetch
   ) {
     if (isBrowser) {
       window.addEventListener('beforeunload', this.delete);
+    }
+    if (fetchFn) {
+      this.fetchFn = fetchFn;
     }
     return this;
   }
