@@ -199,8 +199,6 @@ describe('subscription', () => {
     expect(params.onError).toHaveBeenCalled();
   }, 800);
 
-  //TODO  test this in the browser, manually, just once,
-  //      to make sure the byte ordering detail is correct
   it('should scry for Noun objects', async () => {
     airlock = newUrbit();
     fetchSpy = jest.spyOn(window, 'fetch');

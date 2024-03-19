@@ -19,11 +19,6 @@ import EventEmitter, { hexString } from './utils';
 import { Noun, Atom, Cell, dejs, jam, cue } from '@urbit/nockjs';
 import { parseUw, formatUw, patp2dec } from '@urbit/aura';
 
-//TODO  dan needed changes to the fetch stuff for react native,
-//      native fetch (polyfill?) does xhr instead?
-//  https://github.com/facebook/react-native/issues/27741#issuecomment-1802548394
-//  https://github.com/react-native-community/fetch
-
 /**
  * A class for interacting with an urbit ship, given its URL and code
  */

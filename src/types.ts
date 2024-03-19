@@ -178,7 +178,6 @@ export interface SubscriptionInterface {
   /**
    * Handle negative %watch-ack
    */
-  //TODO  id here is a string, but is number in most other places...
   //NOTE  error is a $tang
   err?(id: number, error: Noun): void;
   /**
