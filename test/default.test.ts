@@ -1,4 +1,4 @@
-import Urbit, { NounPath } from '../src';
+import Urbit, { Path } from '../src';
 import { Noun, Atom, Cell, jam, dwim } from '@urbit/nockjs';
 import { formatUw } from '@urbit/aura';
 import 'jest';
@@ -138,7 +138,7 @@ describe('subscription', () => {
     airlock.onOpen = jest.fn();
     const params = {
       app: 'app',
-      path: ['path', 0] as NounPath,
+      path: ['path'] as Path,
       err: jest.fn(),
       event: jest.fn(),
       quit: jest.fn(),

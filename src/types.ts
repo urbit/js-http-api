@@ -41,12 +41,12 @@ export interface UrbitParams {
 }
 
 /**
- * An urbit style path, rendered as a Javascript string
+ * A path in either string, string-array or Noun format
  * @example
- * `"/updates"`
+ * `'/updates'`
+ * `['updates', 0]`
  */
-export type Path = string;
-export type NounPath = string[]; //NOTE  must contain trailing ~
+export type Path = string | string[] | Noun;
 
 /**
  * @p including leading sig, rendered as a string
@@ -124,7 +124,7 @@ export interface Scry {
   /** {@inheritDoc GallAgent} */
   app: GallAgent;
   /** {@inheritDoc Path} */
-  path: Path;
+  path: string; //REVIEW  make Path again?
   mark?: Mark;
 }
 
@@ -202,9 +202,9 @@ export interface SubscriptionRequestInterface extends SubscriptionInterface {
   /**
    * The path to which to subscribe
    * @example
-   * `['keys', 0]`
+   * `['keys']`
    */
-  path: NounPath;
+  path: Path;
 }
 
 export interface headers {

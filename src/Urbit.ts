@@ -10,13 +10,13 @@ import {
   headers,
   PokeHandlers,
   FatalError,
-  NounPath,
+  Path,
   ReapError,
   UrbitParams,
 } from './types';
 import EventEmitter, { hexString } from './utils';
 
-import { Noun, Atom, Cell, dejs, jam, cue } from '@urbit/nockjs';
+import { Noun, Atom, Cell, enjs, dejs, jam, cue } from '@urbit/nockjs';
 import { parseUw, formatUw, patp2dec } from '@urbit/aura';
 
 /**
@@ -559,7 +559,7 @@ export class Urbit {
    *
    * @returns The first fact on the subcription
    */
-  async subscribeOnce(app: string, path: NounPath, timeout?: number) {
+  async subscribeOnce(app: string, path: Path, timeout?: number) {
     await this.ready;
     return new Promise(async (resolve, reject) => {
       let done = false;
@@ -658,10 +658,25 @@ export class Urbit {
       quit,
     });
 
+    let pathAsString: string;
+    let pathAsNoun: Noun;
+    if (typeof path === 'string') {
+      pathAsString = path;
+      pathAsNoun = dejs.list(path.split('/'));
+    } else
+    if (Array.isArray(path)) {
+      pathAsString = path.join('/');
+      pathAsNoun = dejs.list(path);
+    } else
+    if (path instanceof Atom || path instanceof Cell) {
+      pathAsString = enjs.array(enjs.cord)(path).join('/');
+      pathAsNoun = path;
+    }
+
     this.emit('subscription', {
       id: eventId,
       app,
-      path: path.join('/'),
+      path: pathAsString,
       status: 'open',
     });
 
@@ -671,7 +686,7 @@ export class Urbit {
       eventId,
       Atom.fromString(patp2dec('~' + ship), 10),
       app,
-      path,
+      pathAsNoun,
     ];
     await this.sendNounsToChannel(non);
 
