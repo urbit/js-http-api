@@ -158,7 +158,7 @@ export interface Thread<Action> {
   /**
    * Data of the input vase
    */
-  body: Action;
+  body: any;
 }
 
 export type Action = 'poke' | 'subscribe' | 'ack' | 'unsubscribe' | 'delete';

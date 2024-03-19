@@ -170,9 +170,9 @@ export class Urbit {
     this.code = params.code;
     this.verbose = params.verbose || false;
     this.fetch = params.fetch || ((...args) => fetch(...args));
-    this.onError = params.onError;
-    this.onRetry = params.onRetry;
     this.onOpen = params.onOpen;
+    this.onRetry = params.onRetry;
+    this.onError = params.onError;
 
     if (isBrowser) {
       window.addEventListener('beforeunload', this.delete);
@@ -186,9 +186,8 @@ export class Urbit {
    * Given a ship, url, and code, this returns an airlock connection
    * that is ready to go. It creates a channel and connects to it.
    */
-  static setupChannel({ url, code, ...params }: UrbitParams) {
+  static setupChannel({ code, ...params }: UrbitParams) {
     const airlock = new Urbit({
-      url,
       code,
       ...params,
     });
