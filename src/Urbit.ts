@@ -766,6 +766,15 @@ export class Urbit {
     return cue(Atom.fromString(hex, 16));
   }
 
+  async scryForJson(params: Scry): Promise<any> {
+    if (params.mark !== 'json') {
+      console.log('scryForJson forcing %json mark');
+    }
+    params.mark = 'json';
+    const response = await this.scry(params);
+    return new Response(response as ReadableStream).json();
+  }
+
   /**
    * Run a thread
    *
