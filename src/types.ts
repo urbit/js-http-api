@@ -133,7 +133,7 @@ export interface Scry {
  *
  * @typeParam Action - Typescript type of the data being poked
  */
-export interface Thread<Action> {
+export interface Thread {
   /**
    * The mark of the input vase
    */
@@ -155,6 +155,14 @@ export interface Thread<Action> {
    * Desk of thread
    */
   desk: string;
+}
+export interface NounThread extends Thread {
+  /**
+   * Data of the input vase
+   */
+  body: Noun;
+}
+export interface JsonThread extends Thread {
   /**
    * Data of the input vase
    */

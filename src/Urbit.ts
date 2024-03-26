@@ -5,6 +5,8 @@ import { fetchEventSource, EventSourceMessage } from './fetch-event-source';
 import {
   Scry,
   Thread,
+  NounThread,
+  JsonThread,
   PokeInterface,
   SubscriptionRequestInterface,
   headers,
@@ -14,7 +16,7 @@ import {
   ReapError,
   UrbitParams,
 } from './types';
-import EventEmitter, { hexString } from './utils';
+import EventEmitter, { hexString, unpackJamBytes, packJamBytes } from './utils';
 
 import { Noun, Atom, Cell, enjs, dejs, jam, cue } from '@urbit/nockjs';
 import { parseUw, formatUw, patp2dec } from '@urbit/aura';
@@ -139,12 +141,18 @@ export class Urbit {
     return `${this.url}/~/channel/${this.uid}`;
   }
 
-  private fetchOptions(method: 'PUT' | 'GET' = 'PUT'): any {
-    const type = 'application/x-urb-jam';
+  private fetchOptions(method: 'PUT' | 'GET' = 'PUT',
+                       mode: 'noun' | 'json' = 'noun'): any {
+    let type;
+    switch (mode) {
+      case 'noun': type = 'application/x-urb-jam'; break;
+      case 'json': type = 'application/json';      break;
+    }
     let headers: headers = {};
     switch (method) {
       case 'PUT':
         headers['Content-Type'] = type;
+        headers['Accept'] = type;
         break;
       case 'GET':
         headers['X-Channel-Format'] = type;
@@ -767,12 +775,7 @@ export class Urbit {
       return response.body;
     }
 
-    // extract the atom (jam buffer) from the response's bytes and cue it
-    const hex = [...new Uint8Array(await response.arrayBuffer())]
-      .reverse() //  jammed bytestream is reverse endian
-      .map((x) => x.toString(16).padStart(2, '0'))
-      .join('');
-    return cue(Atom.fromString(hex, 16));
+    return unpackJamBytes(await response.arrayBuffer());
   }
 
   async scryForJson(params: Scry): Promise<any> {
@@ -782,6 +785,25 @@ export class Urbit {
     params.mark = 'json';
     const response = await this.scry(params);
     return new Response(response as ReadableStream).json();
+  }
+
+  private async callThread(params: Thread,
+               body: BodyInit,
+               mode: 'noun' | 'json' = 'noun'): Promise<Response> {
+    await this.ready;
+    const { inputMark, outputMark, threadName, desk } = params;
+    if (!desk) {
+      throw new Error('Must supply desk to run thread from');
+    }
+
+    return this.fetch(
+      `${this.url}/spider/${desk}/${inputMark}/${threadName}/${outputMark}`,
+      {
+        ...this.fetchOptions('PUT', mode),
+        method: 'POST',
+        body: body
+      }
+    );
   }
 
   /**
@@ -794,23 +816,21 @@ export class Urbit {
    * @param desk        The desk to run the thread from
    * @returns  The return value of the thread
    */
-  //TODO  noun-ify once spider is compatible
-  async thread<R, T = any>(params: Thread<T>): Promise<R> {
-    await this.ready;
-    const { inputMark, outputMark, threadName, body, desk } = params;
-    if (!desk) {
-      throw new Error('Must supply desk to run thread from');
-    }
-    const res = await this.fetch(
-      `${this.url}/spider/${desk}/${inputMark}/${threadName}/${outputMark}.json`,
-      {
-        ...this.fetchOptions('PUT'),
-        method: 'POST',
-        body: JSON.stringify(body),
-      }
-    );
+  //TODO  test
+  async thread(params: NounThread): Promise<Noun> {
+    const body = packJamBytes(params.body);
+    const response = await this.callThread(params, body, 'noun');
+    return unpackJamBytes(await response.arrayBuffer());
+  }
 
-    return res.json();
+  /**
+   * Run a thread, but json
+   */
+  //TODO  test
+  async jsonThread(params: JsonThread): Promise<any> {
+    const body = JSON.stringify(params.body);
+    const response = await this.callThread(params, body, 'json');
+    return response.json();
   }
 }
 
