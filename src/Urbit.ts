@@ -816,7 +816,6 @@ export class Urbit {
    * @param desk        The desk to run the thread from
    * @returns  The return value of the thread
    */
-  //TODO  test
   async thread(params: NounThread): Promise<Noun> {
     const body = packJamBytes(params.body);
     const response = await this.callThread(params, body, 'noun');
@@ -826,7 +825,6 @@ export class Urbit {
   /**
    * Run a thread, but json
    */
-  //TODO  test
   async jsonThread(params: JsonThread): Promise<any> {
     const body = JSON.stringify(params.body);
     const response = await this.callThread(params, body, 'json');
