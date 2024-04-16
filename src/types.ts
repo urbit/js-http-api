@@ -55,20 +55,8 @@ export type Path = string | string[] | Noun;
  * ```typescript
  * "~sampel-palnet"
  * ```
- *
  */
 export type Patp = string;
-
-/**
- * @p not including leading sig, rendered as a string
- *
- * @example
- * ```typescript
- * "sampel-palnet"
- * ```
- *
- */
-export type PatpNoSig = string;
 
 /**
  * The name of a clay mark, as a string
@@ -103,7 +91,7 @@ export interface Poke {
    * This should always be the ship that you are connected to
    *
    */
-  ship?: PatpNoSig;
+  ship?: Patp;
   /**
    */
   app: GallAgent;

@@ -623,7 +623,7 @@ export class Urbit {
     }
 
     const eventId = this.getEventId();
-    const ship = Atom.fromString(patp2dec('~' + shipName), 10);
+    const ship = Atom.fromString(patp2dec(shipName), 10);
     // [%poke request-id=@ud ship=@p app=term mark=@tas =noun]
     const non = ['poke', eventId, ship, app, mark, noun];
     this.outstandingPokes.set(eventId, params);
@@ -688,7 +688,7 @@ export class Urbit {
     const non = [
       'subscribe',
       eventId,
-      Atom.fromString(patp2dec('~' + ship), 10),
+      Atom.fromString(patp2dec(ship), 10),
       app,
       pathAsNoun,
     ];
