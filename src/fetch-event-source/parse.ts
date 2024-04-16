@@ -166,7 +166,6 @@ export function getMessages(
         fieldLength + (line[fieldLength + 1] === ControlChars.Space ? 2 : 1);
       const value = decoder.decode(line.subarray(valueOffset));
 
-      console.log('field:', field, 'value:', value);
       switch (field) {
         case 'data':
           // if this message already has data, append the new value to the old.
