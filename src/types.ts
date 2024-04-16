@@ -187,7 +187,7 @@ export interface Subscription {
   /**
    * Handle %fact
    */
-  onFact?(mark: string, data: Noun): void;
+  onFact?(mark: Mark, data: Noun): void;
   /**
    * Handle %kick
    */

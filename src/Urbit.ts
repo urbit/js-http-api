@@ -15,6 +15,9 @@ import {
   ReapError,
   UrbitParams,
   OnceSubscriptionErr,
+  Patp,
+  GallAgent,
+  Mark,
 } from './types';
 import EventEmitter, { hexString, unpackJamBytes, packJamBytes } from './utils';
 
@@ -90,7 +93,7 @@ export class Urbit {
   /**
    * Identity of the ship we're connected to
    */
-  ship?: string | null;
+  ship?: Patp | null;
 
   /**
    * Our access code
@@ -100,7 +103,7 @@ export class Urbit {
   /**
    * Our identity, with which we are authenticated into the ship
    */
-  our?: string | null;
+  our?: Patp | null;
 
   /**
    * If verbose, logs output eagerly.
@@ -566,7 +569,7 @@ export class Urbit {
    *
    * @returns The first fact on the subcription
    */
-  async subscribeOnce(app: string, path: Path, timeout?: number):
+  async subscribeOnce(app: GallAgent, path: Path, timeout?: number):
   Promise<Noun | OnceSubscriptionErr> {
     await this.ready;
     return new Promise(async (resolve, reject) => {
@@ -577,7 +580,7 @@ export class Urbit {
           reject('onKick');
         }
       };
-      const onFact = (m: string, n: Noun) => {
+      const onFact = (m: Mark, n: Noun) => {
         if (!done) {
           resolve(n);
           this.unsubscribe(id);
