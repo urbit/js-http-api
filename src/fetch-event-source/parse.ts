@@ -118,14 +118,6 @@ export function getLines(
       }
 
       // we've reached the line end, send it out:
-      console.log('processing line', {
-        position,
-        lineStart,
-        lineEnd,
-        fieldLength,
-        bufLength,
-        line: new TextDecoder().decode(buffer.subarray(lineStart, lineEnd)),
-      });
       onLine(buffer.subarray(lineStart, lineEnd), fieldLength);
       lineStart = position; // we're now on the next line
       fieldLength = -1;
@@ -141,15 +133,6 @@ export function getLines(
       position -= lineStart;
       lineStart = 0;
     }
-
-    console.log(
-      'position:',
-      position,
-      'lineStart:',
-      lineStart,
-      'buffer:',
-      buffer
-    );
   };
 }
 
