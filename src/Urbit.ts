@@ -378,8 +378,7 @@ export class Urbit {
 
           let data: Noun;
           if (event.data) {
-            //TODO  use the same bignum type everywhere
-            data = cue(Atom.fromString(parseUw(event.data).toString()));
+            data = cue(new Atom(parseUw(event.data)));
           }
 
           // [request-id channel-event]
