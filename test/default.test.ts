@@ -139,9 +139,9 @@ describe('subscription', () => {
     const params = {
       app: 'app',
       path: ['path'] as Path,
-      err: jest.fn(),
-      event: jest.fn(),
-      quit: jest.fn(),
+      onNack: jest.fn(),
+      onFact: jest.fn(),
+      onKick: jest.fn(),
     };
     const firstEv = dwim('one');
     const secondEv = dwim('two');
@@ -156,8 +156,8 @@ describe('subscription', () => {
     await wait(600);
 
     expect(airlock.onOpen).toBeCalled();
-    expect(params.event).toHaveBeenNthCalledWith(1, 1, 'mark', firstEv);
-    expect(params.event).toHaveBeenNthCalledWith(2, 1, 'mark', secondEv);
+    expect(params.onFact).toHaveBeenNthCalledWith(1, 'mark', firstEv);
+    expect(params.onFact).toHaveBeenNthCalledWith(2, 'mark', secondEv);
   }, 800);
   it('should handle poke acks', async () => {
     airlock = newUrbit();

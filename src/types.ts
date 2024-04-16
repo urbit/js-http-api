@@ -115,6 +115,11 @@ export interface Poke {
    * Noun to poke with
    */
   noun: Noun;
+  /**
+   * result handlers
+   */
+  onSuccess?: () => void;
+  onError?: (e: Noun) => void; //  given a $tang
 }
 
 /**
@@ -124,7 +129,7 @@ export interface Scry {
   /** {@inheritDoc GallAgent} */
   app: GallAgent;
   /** {@inheritDoc Path} */
-  path: string; //REVIEW  make Path again?
+  path: Path;
   mark?: Mark;
 }
 
@@ -169,38 +174,11 @@ export interface JsonThread extends Thread {
   body: any;
 }
 
-export type Action = 'poke' | 'subscribe' | 'ack' | 'unsubscribe' | 'delete';
-
-export interface PokeHandlers {
-  onSuccess?: () => void;
-  onError?: (e: Noun) => void; //  given a $tang
-}
-
-export type PokeInterface = PokeHandlers & Poke;
-
 /**
  * Subscription event handlers
  *
  */
-export interface SubscriptionInterface {
-  /**
-   * Handle negative %watch-ack
-   */
-  //NOTE  error is a $tang
-  err?(id: number, error: Noun): void;
-  /**
-   * Handle %fact
-   */
-  event?(id: number, mark: string, data: Noun): void;
-  /**
-   * Handle %kick
-   */
-  quit?(): void;
-}
-
-export type OnceSubscriptionErr = 'quit' | 'nack' | 'timeout';
-
-export interface SubscriptionRequestInterface extends SubscriptionInterface {
+export interface Subscription {
   /**
    * The app to subscribe to
    * @example
@@ -213,7 +191,22 @@ export interface SubscriptionRequestInterface extends SubscriptionInterface {
    * `['keys']`
    */
   path: Path;
+  /**
+   * Handle negative %watch-ack
+   */
+  //NOTE  error is a $tang
+  onNack?(error: Noun): void;
+  /**
+   * Handle %fact
+   */
+  onFact?(mark: string, data: Noun): void;
+  /**
+   * Handle %kick
+   */
+  onKick?(): void;
 }
+
+export type OnceSubscriptionErr = 'onKick' | 'onNack' | 'timeout';
 
 export interface headers {
   Cookie?: string;

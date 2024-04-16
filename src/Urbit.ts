@@ -7,14 +7,14 @@ import {
   Thread,
   NounThread,
   JsonThread,
-  PokeInterface,
-  SubscriptionRequestInterface,
+  Poke,
+  Subscription,
   headers,
-  PokeHandlers,
   FatalError,
   Path,
   ReapError,
   UrbitParams,
+  OnceSubscriptionErr,
 } from './types';
 import EventEmitter, { hexString, unpackJamBytes, packJamBytes } from './utils';
 
@@ -63,7 +63,7 @@ export class Urbit {
    * removed after calling the success or failure function.
    */
 
-  private outstandingPokes: Map<number, PokeHandlers> = new Map();
+  private outstandingPokes: Map<number, Poke> = new Map();
 
   /**
    * A registry of requestId to subscription functions.
@@ -74,7 +74,7 @@ export class Urbit {
    * subscription is available, which may be 0, 1, or many times. The
    * disconnect function may be called exactly once.
    */
-  private outstandingSubscriptions: Map<number, SubscriptionRequestInterface> =
+  private outstandingSubscriptions: Map<number, Subscription> =
     new Map();
 
   /**
@@ -227,6 +227,7 @@ export class Urbit {
     }
   }
 
+  //NOTE  debugging use only!
   on<T extends UrbitHttpApiEventType>(
     event: T,
     callback: (data: UrbitHttpApiEvent[T]) => void
@@ -409,7 +410,7 @@ export class Urbit {
               if (bod instanceof Cell) {
                 //TODO  pre-render tang after porting tang utils
                 console.error(bod.tail);
-                funcs.err(id, bod.tail);
+                funcs.onNack(bod.tail);
                 this.outstandingSubscriptions.delete(id);
               }
               // [%fact =desk =mark =noun]
@@ -430,7 +431,7 @@ export class Urbit {
                 }
                 const mark = Atom.cordToString(bod.tail.head);
                 //NOTE  we don't pass the desk. it's a leak-y eyre impl detail
-                funcs.event(id, mark, bod.tail.tail);
+                funcs.onFact(mark, bod.tail.tail);
               } catch (e) {
                 console.error('Failed to call subscription event callback', e);
               }
@@ -440,7 +441,7 @@ export class Urbit {
               this.outstandingSubscriptions.has(id)
             ) {
               const funcs = this.outstandingSubscriptions.get(id);
-              funcs.quit();
+              funcs.onKick();
               this.outstandingSubscriptions.delete(id);
               this.emit('subscription', {
                 id: id,
@@ -509,7 +510,7 @@ export class Urbit {
     this.lastHeardEventId = -1;
     this.lastAcknowledgedEventId = -1;
     this.outstandingSubscriptions.forEach((sub, id) => {
-      sub.quit();
+      sub.onKick();
       this.emit('subscription', {
         id,
         status: 'close',
@@ -537,11 +538,10 @@ export class Urbit {
    *
    * @param eventId The event to acknowledge.
    */
-  private async ack(eventId: number): Promise<number | void> {
+  private async ack(eventId: number): Promise<void> {
     this.lastAcknowledgedEventId = eventId;
     // [%ack event-id=@ud]
-    await this.sendNounsToChannel(['ack', eventId]);
-    return eventId;
+    return this.sendNounsToChannel(['ack', eventId]);
   }
 
   //NOTE  every arg is interpreted (through nockjs.dwim) as a noun, which
@@ -566,23 +566,27 @@ export class Urbit {
    *
    * @returns The first fact on the subcription
    */
-  async subscribeOnce(app: string, path: Path, timeout?: number) {
+  async subscribeOnce(app: string, path: Path, timeout?: number):
+  Promise<Noun | OnceSubscriptionErr> {
     await this.ready;
     return new Promise(async (resolve, reject) => {
       let done = false;
       let id: number | null = null;
-      const quit = () => {
+      const onKick = () => {
         if (!done) {
-          reject('quit');
+          reject('onKick');
         }
       };
-      const event = (id: number, m: string, n: Noun) => {
+      const onFact = (m: string, n: Noun) => {
         if (!done) {
           resolve(n);
           this.unsubscribe(id);
         }
       };
-      const request = { app, path, event, err: reject, quit };
+      const onNack = (n: Noun) => {
+        reject('onNack');
+      }
+      const request = { app, path, onFact, onNack, onKick };
 
       id = await this.subscribe(request);
 
@@ -605,11 +609,11 @@ export class Urbit {
    * @param mark The mark of the data being sent
    * @param noun The data to send
    */
-  async poke(params: PokeInterface): Promise<number> {
+  async poke(params: Poke): Promise<number> {
     await this.ready;
-    const { app, mark, noun, shipName, onSuccess, onError } = {
-      onSuccess: () => {},
-      onError: () => {},
+    params.onSuccess = params.onSuccess || (()=>{});
+    params.onError   = params.onError   || (()=>{});
+    const { app, mark, noun, shipName } = {
       shipName: this.ship,
       ...params,
     };
@@ -622,14 +626,7 @@ export class Urbit {
     const ship = Atom.fromString(patp2dec('~' + shipName), 10);
     // [%poke request-id=@ud ship=@p app=term mark=@tas =noun]
     const non = ['poke', eventId, ship, app, mark, noun];
-    this.outstandingPokes.set(eventId, {
-      onSuccess: () => {
-        onSuccess();
-      },
-      onError: (err) => {
-        onError(err);
-      },
-    });
+    this.outstandingPokes.set(eventId, params);
     await this.sendNounsToChannel(non);
     return eventId;
   }
@@ -642,12 +639,12 @@ export class Urbit {
    * @param path The path to which to subscribe
    * @param handlers Handlers to deal with various events of the subscription
    */
-  async subscribe(params: SubscriptionRequestInterface): Promise<number> {
+  async subscribe(params: Subscription): Promise<number> {
     await this.ready;
-    const { app, path, ship, err, event, quit } = {
-      err: () => {},
-      event: () => {},
-      quit: () => {},
+    const { app, path, ship, onNack, onFact, onKick } = {
+      onNack: () => {},
+      onFact: () => {},
+      onKick: () => {},
       ship: this.ship,
       ...params,
     };
@@ -660,9 +657,9 @@ export class Urbit {
     this.outstandingSubscriptions.set(eventId, {
       app,
       path,
-      err,
-      event,
-      quit,
+      onNack,
+      onFact,
+      onKick,
     });
 
     let pathAsString: string;
@@ -762,8 +759,20 @@ export class Urbit {
   async scry(params: Scry): Promise<Noun | ReadableStream<Uint8Array>> {
     await this.ready;
     const { app, path, mark } = params;
+
+    let pathAsString: string;
+    if (typeof path === 'string') {
+      pathAsString = path;
+    } else
+    if (Array.isArray(path)) {
+      pathAsString = path.join('/');
+    } else
+    if (path instanceof Atom || path instanceof Cell) {
+      pathAsString = enjs.array(enjs.cord)(path).join('/');
+    }
+
     const response = await this.fetch(
-      `${this.url}/~/scry/${app}${path}.${mark || 'noun'}`,
+      `${this.url}/~/scry/${app}${pathAsString}.${mark || 'noun'}`,
       this.fetchOptions('GET')
     );
 
