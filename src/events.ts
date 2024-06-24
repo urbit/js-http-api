@@ -42,6 +42,10 @@ export interface InitEvent extends ResetEvent {
   subscriptions: Omit<SubscriptionEvent, 'status'>[];
 }
 
+export interface ChannelReapedEvent {
+  time: number;
+}
+
 export type UrbitHttpApiEvent = {
   subscription: SubscriptionEvent;
   'status-update': StatusUpdateEvent;
@@ -50,6 +54,7 @@ export type UrbitHttpApiEvent = {
   error: ErrorEvent;
   reset: ResetEvent;
   'seamless-reset': ResetEvent;
+  'channel-reaped': ChannelReapedEvent;
   init: InitEvent;
 };
 
@@ -61,4 +66,5 @@ export type UrbitHttpApiEventType =
   | 'error'
   | 'reset'
   | 'seamless-reset'
+  | 'channel-reaped'
   | 'init';
