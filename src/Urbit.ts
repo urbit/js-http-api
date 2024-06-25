@@ -423,6 +423,7 @@ export class Urbit {
           this.errorCount++;
           this.emit('error', { time: Date.now(), msg: JSON.stringify(error) });
           if (error instanceof ReapError) {
+            this.emit('channel-reaped', { time: Date.now() });
             this.seamlessReset();
             return;
           }
