@@ -489,6 +489,10 @@ export class Urbit {
         id,
         status: 'close',
       });
+
+      if (sub.resubOnQuit) {
+        this.subscribe(sub);
+      }
     });
 
     this.outstandingPokes.forEach((poke, id) => {
