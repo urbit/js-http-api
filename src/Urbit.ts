@@ -406,13 +406,16 @@ export class Urbit {
               data.response === 'quit' &&
               this.outstandingSubscriptions.has(data.id)
             ) {
-              const funcs = this.outstandingSubscriptions.get(data.id);
-              funcs.quit(data);
+              const sub = this.outstandingSubscriptions.get(data.id);
+              sub.quit(data);
               this.outstandingSubscriptions.delete(data.id);
               this.emit('subscription', {
                 id: data.id,
                 status: 'close',
               });
+              if (sub.resubOnQuit) {
+                this.subscribe(sub);
+              }
             } else if (this.verbose) {
               console.log([...this.outstandingSubscriptions.keys()]);
               console.log('Unrecognized response', data);
@@ -560,7 +563,14 @@ export class Urbit {
           this.unsubscribe(id);
         }
       };
-      const request = { app, path, event, err: reject, quit };
+      const request = {
+        app,
+        path,
+        resubOnQuit: false,
+        event,
+        err: reject,
+        quit,
+      };
 
       id = await this.subscribe(request);
 
@@ -624,11 +634,12 @@ export class Urbit {
    * @param handlers Handlers to deal with various events of the subscription
    */
   async subscribe(params: SubscriptionRequestInterface): Promise<number> {
-    const { app, path, ship, err, event, quit } = {
+    const { app, path, ship, resubOnQuit, err, event, quit } = {
       err: () => {},
       event: () => {},
       quit: () => {},
       ship: this.ship,
+      resubOnQuit: true,
       ...params,
     };
 
@@ -647,6 +658,7 @@ export class Urbit {
     this.outstandingSubscriptions.set(message.id, {
       app,
       path,
+      resubOnQuit,
       err,
       event,
       quit,
