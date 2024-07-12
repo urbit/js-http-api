@@ -170,6 +170,10 @@ export interface SubscriptionRequestInterface extends SubscriptionInterface {
    * `"/keys"`
    */
   path: Path;
+  /**
+   * Whether to resubscribe this exact subscription on quit
+   */
+  resubOnQuit?: boolean;
 }
 
 export interface headers {
