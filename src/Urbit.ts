@@ -5,6 +5,7 @@ import { isBrowser } from 'browser-or-node';
 import { UrbitHttpApiEvent, UrbitHttpApiEventType } from './events';
 import { EventSourceMessage, fetchEventSource } from './fetch-event-source';
 import {
+  AuthError,
   EyreEvent,
   FatalError,
   GallAgent,
@@ -125,8 +126,6 @@ export class Urbit {
    */
   fetch: typeof fetch;
 
-  public ready: Promise<void> = Promise.resolve();
-
   /**
    * number of consecutive errors in connecting to the eventsource
    */
@@ -219,7 +218,7 @@ export class Urbit {
       ...params,
     });
 
-    airlock.ready = (async () => {
+    (async () => {
       try {
         // Learn where we are aka what ship we're connecting to
         await airlock.getShipName();
@@ -516,6 +515,8 @@ export class Urbit {
     this.lastEventId = 0;
     this.lastHeardEventId = -1;
     this.lastAcknowledgedEventId = -1;
+
+    this.connect();
     this.outstandingSubscriptions.forEach((sub, id) => {
       sub.onKick?.();
       this.emit('subscription', {
@@ -677,7 +678,6 @@ export class Urbit {
     path: Path,
     timeout?: number
   ): Promise<T> {
-    await this.ready;
     return new Promise((resolve, reject) => {
       let done = false;
       let id: number | null = null;
@@ -721,7 +721,6 @@ export class Urbit {
    * @param noun The data to send
    */
   async poke(params: Poke): Promise<number> {
-    await this.ready;
     params.onSuccess = params.onSuccess || (() => {});
     params.onError = params.onError || (() => {});
     const { app, mark, data, ship } = {
@@ -759,7 +758,6 @@ export class Urbit {
    * @param handlers Handlers to deal with various events of the subscription
    */
   async subscribe(params: Subscription): Promise<number> {
-    await this.ready;
     const { app, path, ship, onNack, onFact, onKick } = {
       onNack: () => {},
       onFact: () => {},
@@ -828,7 +826,6 @@ export class Urbit {
    * @param subscription
    */
   async unsubscribe(subscription: number) {
-    await this.ready;
     // [%unsubscribe request-id=@ud subscription-id=@ud]
     return this.sendNounsToChannel([
       'unsubscribe',
@@ -882,7 +879,6 @@ export class Urbit {
    * @returns The scry result
    */
   async scry(params: Scry): Promise<Noun | ReadableStream<Uint8Array>> {
-    await this.ready;
     const { app, path, mark } = params;
 
     let pathAsString: string = '';
@@ -923,7 +919,6 @@ export class Urbit {
     body: BodyInit,
     mode: 'noun' | 'json' = 'noun'
   ): Promise<Response> {
-    await this.ready;
     const { inputMark, outputMark, threadName, desk } = params;
     if (!desk) {
       throw new Error('Must supply desk to run thread from');
