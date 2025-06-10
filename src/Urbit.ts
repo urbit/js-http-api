@@ -355,7 +355,11 @@ export class Urbit {
         ...this.fetchOptions('GET', this.mode),
         fetch: this.fetch,
         openWhenHidden: true,
-        responseTimeout: 25000,
+        //NOTE  30s somewhat arbitrary, but importantly longer than eyre's
+        //      20s heartbeat timer. this lets us stay connected even if the
+        //      ship is "10s worth of busy". probably don't want to tune this
+        //      to be longer than a minute, to avoid proxy timeouts etc.
+        responseTimeout: 30000,
         onopen: async (response, isReconnect) => {
           if (this.verbose) {
             console.log('Opened eventsource', response);
