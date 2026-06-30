@@ -173,3 +173,45 @@ describe('subscription', () => {
     expect(params.onError).toHaveBeenCalled();
   }, 800);
 });
+
+describe('urlTransformer', () => {
+  let airlock: Urbit;
+  let fetchSpy: jest.SpyInstance;
+  beforeEach(() => {
+    fetchSpy = jest.spyOn(window, 'fetch');
+    airlock = newUrbit(fetchSpy);
+  });
+  afterEach(() => {
+    fetchSpy.mockReset();
+  });
+
+  it('defaults to the identity when none is supplied', () => {
+    expect(airlock.urlTransformer('/~/channel/x', [])).toBe('/~/channel/x');
+  });
+
+  it('rewrites the channel URL on poke and receives the message body', async () => {
+    const transformer = jest.fn(
+      (url: string, _body: any[]) => `${url}?annotated`
+    );
+    airlock.urlTransformer = transformer;
+    fetchSpy.mockImplementation(fakeFetch(() => fakeSSE([ack(1)])));
+    await airlock.poke({
+      app: 'app',
+      mark: 'mark',
+      json: { poke: 1 },
+      onSuccess: jest.fn(),
+      onError: jest.fn(),
+    });
+    await wait(300);
+
+    expect(transformer).toHaveBeenCalled();
+    // the transformer is handed the outgoing message body
+    const [, body] = transformer.mock.calls[0];
+    expect(Array.isArray(body)).toBe(true);
+    // the channel PUT used the rewritten URL
+    const usedRewrittenUrl = fetchSpy.mock.calls.some(
+      ([u]) => typeof u === 'string' && u.includes('?annotated')
+    );
+    expect(usedRewrittenUrl).toBe(true);
+  }, 800);
+});

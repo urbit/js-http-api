@@ -103,6 +103,14 @@ export class Urbit {
    */
   fetchFn: typeof fetch = (...args) => fetch(...args);
 
+  /**
+   * Transforms the channel URL before each poke/ack PUT. Defaults to the
+   * identity. Lets a consumer rewrite the request URL based on the outgoing
+   * message body — e.g. a hosting proxy that annotates the URL with the
+   * channel actions being sent.
+   */
+  urlTransformer: (url: string, body: Message[]) => string = (url) => url;
+
   onError?: (error: any) => void = null;
 
   onRetry?: () => void = null;
@@ -143,13 +151,17 @@ export class Urbit {
     public url: string,
     public code?: string,
     public desk?: string,
-    fetchFn?: typeof fetch
+    fetchFn?: typeof fetch,
+    urlTransformer?: (url: string, body: Message[]) => string
   ) {
     if (isBrowser) {
       window.addEventListener('beforeunload', this.delete);
     }
     if (fetchFn) {
       this.fetchFn = fetchFn;
+    }
+    if (urlTransformer) {
+      this.urlTransformer = urlTransformer;
     }
     return this;
   }
@@ -527,11 +539,14 @@ export class Urbit {
   }
 
   private async sendJSONtoChannel(...json: Message[]): Promise<void> {
-    const response = await this.fetchFn(this.channelUrl, {
-      ...this.fetchOptions,
-      method: 'PUT',
-      body: JSON.stringify(json),
-    });
+    const response = await this.fetchFn(
+      this.urlTransformer(this.channelUrl, json),
+      {
+        ...this.fetchOptions,
+        method: 'PUT',
+        body: JSON.stringify(json),
+      }
+    );
     if (!response.ok) {
       throw new Error('Failed to PUT channel');
     }
