@@ -104,10 +104,12 @@ export class Urbit {
   fetchFn: typeof fetch = (...args) => fetch(...args);
 
   /**
-   * Transforms the channel URL before each poke/ack PUT. Defaults to the
-   * identity. Lets a consumer rewrite the request URL based on the outgoing
-   * message body — e.g. a hosting proxy that annotates the URL with the
-   * channel actions being sent.
+   * Transforms the channel URL before each PUT to the channel — pokes, acks,
+   * and subscription open/close all go through the same request. Defaults to
+   * the identity. Lets a consumer rewrite the request URL based on the
+   * outgoing message body — e.g. a hosting proxy that annotates the URL with
+   * the channel actions being sent. Not applied to channel deletion, which
+   * uses `sendBeacon`/a direct request.
    */
   urlTransformer: (url: string, body: Message[]) => string = (url) => url;
 
